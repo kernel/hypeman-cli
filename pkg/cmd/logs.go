@@ -3,9 +3,12 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
 
 	"github.com/onkernel/hypeman-go"
-	"github.com/onkernel/hypeman-go/option"
 	"github.com/urfave/cli/v3"
 )
 
@@ -43,27 +46,54 @@ func handleLogs(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	params := hypeman.InstanceStreamLogsParams{}
-	if cmd.IsSet("follow") {
-		params.Follow = hypeman.Opt(cmd.Bool("follow"))
+	// Build URL for logs endpoint
+	baseURL := cmd.Root().String("base-url")
+	if baseURL == "" {
+		baseURL = os.Getenv("HYPEMAN_BASE_URL")
 	}
-	if cmd.IsSet("tail") {
-		params.Tail = hypeman.Opt(int64(cmd.Int("tail")))
-	}
-
-	stream := client.Instances.StreamLogsStreaming(
-		ctx,
-		instanceID,
-		params,
-		option.WithMiddleware(debugMiddleware(cmd.Root().Bool("debug"))),
-	)
-	defer stream.Close()
-
-	for stream.Next() {
-		fmt.Printf("%s\n", stream.Current())
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
 	}
 
-	return stream.Err()
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return fmt.Errorf("invalid base URL: %w", err)
+	}
+	u.Path = fmt.Sprintf("/instances/%s/logs", instanceID)
+
+	// Add query parameters
+	q := u.Query()
+	q.Set("tail", fmt.Sprintf("%d", cmd.Int("tail")))
+	if cmd.Bool("follow") {
+		q.Set("follow", "true")
+	}
+	u.RawQuery = q.Encode()
+
+	// Make HTTP request
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	apiKey := os.Getenv("HYPEMAN_API_KEY")
+	if apiKey != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKey))
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to fetch logs: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to fetch logs (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+
+	// Stream the response to stdout
+	_, err = io.Copy(os.Stdout, resp.Body)
+	return err
 }
 
 
