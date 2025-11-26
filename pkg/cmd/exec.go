@@ -131,7 +131,7 @@ func handleExec(ctx context.Context, cmd *cli.Command) error {
 		baseURL = os.Getenv("HYPEMAN_BASE_URL")
 	}
 	if baseURL == "" {
-		baseURL = "https://api.onkernel.com"
+		baseURL = "http://localhost:8080"
 	}
 
 	apiKey := os.Getenv("HYPEMAN_API_KEY")
