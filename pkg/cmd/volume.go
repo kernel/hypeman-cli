@@ -14,7 +14,7 @@ import (
 
 var volumesCreate = cli.Command{
 	Name:  "create",
-	Usage: "Create volume",
+	Usage: "Creates a new volume. Supports two modes:",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:  "name",
