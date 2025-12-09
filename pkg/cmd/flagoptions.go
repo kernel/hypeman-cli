@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log"
 	"mime/multipart"
 	"os"
 
 	"github.com/onkernel/hypeman-cli/internal/apiform"
 	"github.com/onkernel/hypeman-cli/internal/apiquery"
+	"github.com/onkernel/hypeman-cli/internal/debugmiddleware"
 	"github.com/onkernel/hypeman-cli/internal/requestflag"
 	"github.com/onkernel/hypeman-go/option"
 
@@ -30,7 +32,7 @@ func flagOptions(
 ) ([]option.RequestOption, error) {
 	var options []option.RequestOption
 	if cmd.Bool("debug") {
-		options = append(options, debugMiddlewareOption)
+		options = append(options, option.WithMiddleware(debugmiddleware.DebugMiddleware(log.Default())))
 	}
 
 	queries := make(map[string]any)
