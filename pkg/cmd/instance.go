@@ -125,7 +125,7 @@ var instancesGet = cli.Command{
 
 var instancesLogs = cli.Command{
 	Name:  "logs",
-	Usage: "Streams instance console logs as Server-Sent Events. Returns the last N lines\n(controlled by `tail` parameter), then optionally continues streaming new lines\nif `follow=true`.",
+	Usage: "Streams instance logs as Server-Sent Events. Use the `source` parameter to\nselect which log to stream:",
 	Flags: []cli.Flag{
 		&requestflag.StringFlag{
 			Name: "id",
@@ -135,6 +135,14 @@ var instancesLogs = cli.Command{
 			Usage: "Continue streaming new lines after initial output",
 			Config: requestflag.RequestConfig{
 				QueryPath: "follow",
+			},
+		},
+		&requestflag.StringFlag{
+			Name:  "source",
+			Usage: "Log source to stream:\n- app: Guest application logs (serial console output)\n- vmm: Cloud Hypervisor VMM logs (hypervisor stdout+stderr)\n- hypeman: Hypeman operations log (actions taken on this instance)\n",
+			Value: requestflag.Value[hypeman.InstanceLogsParamsSource]("app"),
+			Config: requestflag.RequestConfig{
+				QueryPath: "source",
 			},
 		},
 		&requestflag.IntFlag{
