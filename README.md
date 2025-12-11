@@ -57,13 +57,13 @@ hypeman exec -it my-app /bin/sh
 
 # VM lifecycle
 # Turn off the VM
-hypeman instances stop --id my-app
+hypeman stop my-app
 # Boot the VM that was turned off
-hypeman instances start --id my-app
+hypeman start my-app
 # Put the VM to sleep (paused)
-hypeman instances standby --id my-app
+hypeman standby my-app
 # Awaken the VM (resumed)
-hypeman instances restore --id my-app
+hypeman restore my-app
 
 # Create a reverse proxy ("ingress") from the host to your VM
 hypeman ingress create --name my-ingress my-app --hostname my-nginx-app --port 80 --host-port 8081
