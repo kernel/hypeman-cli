@@ -19,25 +19,21 @@ var instancesVolumesAttach = cli.Command{
 	Name:  "attach",
 	Usage: "Attach volume to instance",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "id",
 		},
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "volume-id",
 		},
-		&requestflag.StringFlag{
-			Name:  "mount-path",
-			Usage: "Path where volume should be mounted",
-			Config: requestflag.RequestConfig{
-				BodyPath: "mount_path",
-			},
+		&requestflag.Flag[string]{
+			Name:     "mount-path",
+			Usage:    "Path where volume should be mounted",
+			BodyPath: "mount_path",
 		},
-		&requestflag.BoolFlag{
-			Name:  "readonly",
-			Usage: "Mount as read-only",
-			Config: requestflag.RequestConfig{
-				BodyPath: "readonly",
-			},
+		&requestflag.Flag[bool]{
+			Name:     "readonly",
+			Usage:    "Mount as read-only",
+			BodyPath: "readonly",
 		},
 	},
 	Action:          handleInstancesVolumesAttach,
@@ -48,10 +44,10 @@ var instancesVolumesDetach = cli.Command{
 	Name:  "detach",
 	Usage: "Detach volume from instance",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "id",
 		},
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "volume-id",
 		},
 	},
@@ -70,7 +66,7 @@ func handleInstancesVolumesAttach(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
 	params := hypeman.InstanceVolumeAttachParams{
-		ID: requestflag.CommandRequestValue[string](cmd, "id"),
+		ID: cmd.Value("id").(string),
 	}
 
 	options, err := flagOptions(
@@ -87,7 +83,7 @@ func handleInstancesVolumesAttach(ctx context.Context, cmd *cli.Command) error {
 	options = append(options, option.WithResponseBodyInto(&res))
 	_, err = client.Instances.Volumes.Attach(
 		ctx,
-		requestflag.CommandRequestValue[string](cmd, "volume-id"),
+		cmd.Value("volume-id").(string),
 		params,
 		options...,
 	)
@@ -112,7 +108,7 @@ func handleInstancesVolumesDetach(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
 	params := hypeman.InstanceVolumeDetachParams{
-		ID: requestflag.CommandRequestValue[string](cmd, "id"),
+		ID: cmd.Value("id").(string),
 	}
 
 	options, err := flagOptions(
@@ -129,7 +125,7 @@ func handleInstancesVolumesDetach(ctx context.Context, cmd *cli.Command) error {
 	options = append(options, option.WithResponseBodyInto(&res))
 	_, err = client.Instances.Volumes.Detach(
 		ctx,
-		requestflag.CommandRequestValue[string](cmd, "volume-id"),
+		cmd.Value("volume-id").(string),
 		params,
 		options...,
 	)

@@ -19,72 +19,54 @@ var instancesCreate = cli.Command{
 	Name:  "create",
 	Usage: "Create and start instance",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
-			Name:  "image",
-			Usage: "OCI image reference",
-			Config: requestflag.RequestConfig{
-				BodyPath: "image",
-			},
+		&requestflag.Flag[string]{
+			Name:     "image",
+			Usage:    "OCI image reference",
+			BodyPath: "image",
 		},
-		&requestflag.StringFlag{
-			Name:  "name",
-			Usage: "Human-readable name (lowercase letters, digits, and dashes only; cannot start or end with a dash)",
-			Config: requestflag.RequestConfig{
-				BodyPath: "name",
-			},
+		&requestflag.Flag[string]{
+			Name:     "name",
+			Usage:    "Human-readable name (lowercase letters, digits, and dashes only; cannot start or end with a dash)",
+			BodyPath: "name",
 		},
-		&requestflag.YAMLFlag{
-			Name:  "env",
-			Usage: "Environment variables",
-			Config: requestflag.RequestConfig{
-				BodyPath: "env",
-			},
+		&requestflag.Flag[any]{
+			Name:     "env",
+			Usage:    "Environment variables",
+			BodyPath: "env",
 		},
-		&requestflag.StringFlag{
-			Name:  "hotplug-size",
-			Usage: `Additional memory for hotplug (human-readable format like "3GB", "1G")`,
-			Value: requestflag.Value[string]("3GB"),
-			Config: requestflag.RequestConfig{
-				BodyPath: "hotplug_size",
-			},
+		&requestflag.Flag[string]{
+			Name:     "hotplug-size",
+			Usage:    `Additional memory for hotplug (human-readable format like "3GB", "1G")`,
+			Default:  "3GB",
+			BodyPath: "hotplug_size",
 		},
-		&requestflag.YAMLFlag{
-			Name:  "network",
-			Usage: "Network configuration for the instance",
-			Config: requestflag.RequestConfig{
-				BodyPath: "network",
-			},
+		&requestflag.Flag[any]{
+			Name:     "network",
+			Usage:    "Network configuration for the instance",
+			BodyPath: "network",
 		},
-		&requestflag.StringFlag{
-			Name:  "overlay-size",
-			Usage: `Writable overlay disk size (human-readable format like "10GB", "50G")`,
-			Value: requestflag.Value[string]("10GB"),
-			Config: requestflag.RequestConfig{
-				BodyPath: "overlay_size",
-			},
+		&requestflag.Flag[string]{
+			Name:     "overlay-size",
+			Usage:    `Writable overlay disk size (human-readable format like "10GB", "50G")`,
+			Default:  "10GB",
+			BodyPath: "overlay_size",
 		},
-		&requestflag.StringFlag{
-			Name:  "size",
-			Usage: `Base memory size (human-readable format like "1GB", "512MB", "2G")`,
-			Value: requestflag.Value[string]("1GB"),
-			Config: requestflag.RequestConfig{
-				BodyPath: "size",
-			},
+		&requestflag.Flag[string]{
+			Name:     "size",
+			Usage:    `Base memory size (human-readable format like "1GB", "512MB", "2G")`,
+			Default:  "1GB",
+			BodyPath: "size",
 		},
-		&requestflag.IntFlag{
-			Name:  "vcpus",
-			Usage: "Number of virtual CPUs",
-			Value: requestflag.Value[int64](2),
-			Config: requestflag.RequestConfig{
-				BodyPath: "vcpus",
-			},
+		&requestflag.Flag[int64]{
+			Name:     "vcpus",
+			Usage:    "Number of virtual CPUs",
+			Default:  2,
+			BodyPath: "vcpus",
 		},
-		&requestflag.YAMLSliceFlag{
-			Name:  "volume",
-			Usage: "Volumes to attach to the instance at creation time",
-			Config: requestflag.RequestConfig{
-				BodyPath: "volumes",
-			},
+		&requestflag.Flag[[]any]{
+			Name:     "volume",
+			Usage:    "Volumes to attach to the instance at creation time",
+			BodyPath: "volumes",
 		},
 	},
 	Action:          handleInstancesCreate,
@@ -103,7 +85,7 @@ var instancesDelete = cli.Command{
 	Name:  "delete",
 	Usage: "Stop and delete instance",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "id",
 		},
 	},
@@ -115,7 +97,7 @@ var instancesGet = cli.Command{
 	Name:  "get",
 	Usage: "Get instance details",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "id",
 		},
 	},
@@ -127,31 +109,25 @@ var instancesLogs = cli.Command{
 	Name:  "logs",
 	Usage: "Streams instance logs as Server-Sent Events. Use the `source` parameter to\nselect which log to stream:",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "id",
 		},
-		&requestflag.BoolFlag{
-			Name:  "follow",
-			Usage: "Continue streaming new lines after initial output",
-			Config: requestflag.RequestConfig{
-				QueryPath: "follow",
-			},
+		&requestflag.Flag[bool]{
+			Name:      "follow",
+			Usage:     "Continue streaming new lines after initial output",
+			QueryPath: "follow",
 		},
-		&requestflag.StringFlag{
-			Name:  "source",
-			Usage: "Log source to stream:\n- app: Guest application logs (serial console output)\n- vmm: Cloud Hypervisor VMM logs (hypervisor stdout+stderr)\n- hypeman: Hypeman operations log (actions taken on this instance)\n",
-			Value: requestflag.Value[hypeman.InstanceLogsParamsSource]("app"),
-			Config: requestflag.RequestConfig{
-				QueryPath: "source",
-			},
+		&requestflag.Flag[string]{
+			Name:      "source",
+			Usage:     "Log source to stream:\n- app: Guest application logs (serial console output)\n- vmm: Cloud Hypervisor VMM logs (hypervisor stdout+stderr)\n- hypeman: Hypeman operations log (actions taken on this instance)\n",
+			Default:   "app",
+			QueryPath: "source",
 		},
-		&requestflag.IntFlag{
-			Name:  "tail",
-			Usage: "Number of lines to return from end",
-			Value: requestflag.Value[int64](100),
-			Config: requestflag.RequestConfig{
-				QueryPath: "tail",
-			},
+		&requestflag.Flag[int64]{
+			Name:      "tail",
+			Usage:     "Number of lines to return from end",
+			Default:   100,
+			QueryPath: "tail",
 		},
 	},
 	Action:          handleInstancesLogs,
@@ -162,7 +138,7 @@ var instancesRestore = cli.Command{
 	Name:  "restore",
 	Usage: "Restore instance from standby",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "id",
 		},
 	},
@@ -174,7 +150,7 @@ var instancesStandby = cli.Command{
 	Name:  "standby",
 	Usage: "Put instance in standby (pause, snapshot, delete VMM)",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "id",
 		},
 	},
@@ -186,7 +162,7 @@ var instancesStart = cli.Command{
 	Name:  "start",
 	Usage: "Start a stopped instance",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "id",
 		},
 	},
@@ -198,7 +174,7 @@ var instancesStop = cli.Command{
 	Name:  "stop",
 	Usage: "Stop instance (graceful shutdown)",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "id",
 		},
 	},
@@ -288,7 +264,7 @@ func handleInstancesDelete(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	return client.Instances.Delete(ctx, requestflag.CommandRequestValue[string](cmd, "id"), options...)
+	return client.Instances.Delete(ctx, cmd.Value("id").(string), options...)
 }
 
 func handleInstancesGet(ctx context.Context, cmd *cli.Command) error {
@@ -313,7 +289,7 @@ func handleInstancesGet(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
-	_, err = client.Instances.Get(ctx, requestflag.CommandRequestValue[string](cmd, "id"), options...)
+	_, err = client.Instances.Get(ctx, cmd.Value("id").(string), options...)
 	if err != nil {
 		return err
 	}
@@ -348,7 +324,7 @@ func handleInstancesLogs(ctx context.Context, cmd *cli.Command) error {
 
 	stream := client.Instances.LogsStreaming(
 		ctx,
-		requestflag.CommandRequestValue[string](cmd, "id"),
+		cmd.Value("id").(string),
 		params,
 		options...,
 	)
@@ -381,7 +357,7 @@ func handleInstancesRestore(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
-	_, err = client.Instances.Restore(ctx, requestflag.CommandRequestValue[string](cmd, "id"), options...)
+	_, err = client.Instances.Restore(ctx, cmd.Value("id").(string), options...)
 	if err != nil {
 		return err
 	}
@@ -414,7 +390,7 @@ func handleInstancesStandby(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
-	_, err = client.Instances.Standby(ctx, requestflag.CommandRequestValue[string](cmd, "id"), options...)
+	_, err = client.Instances.Standby(ctx, cmd.Value("id").(string), options...)
 	if err != nil {
 		return err
 	}
@@ -447,8 +423,7 @@ func handleInstancesStart(ctx context.Context, cmd *cli.Command) error {
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
 	_, err = client.Instances.Start(
-		ctx,
-		requestflag.CommandRequestValue[string](cmd, "id"),
+		ctx, cmd.Value("id").(string),
 		options...,
 	)
 	if err != nil {
@@ -483,8 +458,7 @@ func handleInstancesStop(ctx context.Context, cmd *cli.Command) error {
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
 	_, err = client.Instances.Stop(
-		ctx,
-		requestflag.CommandRequestValue[string](cmd, "id"),
+		ctx, cmd.Value("id").(string),
 		options...,
 	)
 	if err != nil {

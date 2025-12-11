@@ -19,26 +19,20 @@ var volumesCreate = cli.Command{
 	Name:  "create",
 	Usage: "Creates a new volume. Supports two modes:",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
-			Name:  "name",
-			Usage: "Volume name",
-			Config: requestflag.RequestConfig{
-				BodyPath: "name",
-			},
+		&requestflag.Flag[string]{
+			Name:     "name",
+			Usage:    "Volume name",
+			BodyPath: "name",
 		},
-		&requestflag.IntFlag{
-			Name:  "size-gb",
-			Usage: "Size in gigabytes",
-			Config: requestflag.RequestConfig{
-				BodyPath: "size_gb",
-			},
+		&requestflag.Flag[int64]{
+			Name:     "size-gb",
+			Usage:    "Size in gigabytes",
+			BodyPath: "size_gb",
 		},
-		&requestflag.StringFlag{
-			Name:  "id",
-			Usage: "Optional custom identifier (auto-generated if not provided)",
-			Config: requestflag.RequestConfig{
-				BodyPath: "id",
-			},
+		&requestflag.Flag[string]{
+			Name:     "id",
+			Usage:    "Optional custom identifier (auto-generated if not provided)",
+			BodyPath: "id",
 		},
 	},
 	Action:          handleVolumesCreate,
@@ -57,7 +51,7 @@ var volumesDelete = cli.Command{
 	Name:  "delete",
 	Usage: "Delete volume",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "id",
 		},
 	},
@@ -69,7 +63,7 @@ var volumesGet = cli.Command{
 	Name:  "get",
 	Usage: "Get volume details",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "id",
 		},
 	},
@@ -159,7 +153,7 @@ func handleVolumesDelete(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	return client.Volumes.Delete(ctx, requestflag.CommandRequestValue[string](cmd, "id"), options...)
+	return client.Volumes.Delete(ctx, cmd.Value("id").(string), options...)
 }
 
 func handleVolumesGet(ctx context.Context, cmd *cli.Command) error {
@@ -184,7 +178,7 @@ func handleVolumesGet(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
-	_, err = client.Volumes.Get(ctx, requestflag.CommandRequestValue[string](cmd, "id"), options...)
+	_, err = client.Volumes.Get(ctx, cmd.Value("id").(string), options...)
 	if err != nil {
 		return err
 	}
