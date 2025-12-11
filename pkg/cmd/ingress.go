@@ -19,19 +19,15 @@ var ingressesCreate = cli.Command{
 	Name:  "create",
 	Usage: "Create ingress",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
-			Name:  "name",
-			Usage: "Human-readable name (lowercase letters, digits, and dashes only; cannot start or end with a dash)",
-			Config: requestflag.RequestConfig{
-				BodyPath: "name",
-			},
+		&requestflag.Flag[string]{
+			Name:     "name",
+			Usage:    "Human-readable name (lowercase letters, digits, and dashes only; cannot start or end with a dash)",
+			BodyPath: "name",
 		},
-		&requestflag.YAMLSliceFlag{
-			Name:  "rule",
-			Usage: "Routing rules for this ingress",
-			Config: requestflag.RequestConfig{
-				BodyPath: "rules",
-			},
+		&requestflag.Flag[[]any]{
+			Name:     "rule",
+			Usage:    "Routing rules for this ingress",
+			BodyPath: "rules",
 		},
 	},
 	Action:          handleIngressesCreate,
@@ -50,7 +46,7 @@ var ingressesDelete = cli.Command{
 	Name:  "delete",
 	Usage: "Delete ingress",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "id",
 		},
 	},
@@ -62,7 +58,7 @@ var ingressesGet = cli.Command{
 	Name:  "get",
 	Usage: "Get ingress details",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "id",
 		},
 	},
@@ -152,7 +148,7 @@ func handleIngressesDelete(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	return client.Ingresses.Delete(ctx, requestflag.CommandRequestValue[string](cmd, "id"), options...)
+	return client.Ingresses.Delete(ctx, cmd.Value("id").(string), options...)
 }
 
 func handleIngressesGet(ctx context.Context, cmd *cli.Command) error {
@@ -177,7 +173,7 @@ func handleIngressesGet(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
-	_, err = client.Ingresses.Get(ctx, requestflag.CommandRequestValue[string](cmd, "id"), options...)
+	_, err = client.Ingresses.Get(ctx, cmd.Value("id").(string), options...)
 	if err != nil {
 		return err
 	}
