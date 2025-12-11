@@ -76,14 +76,28 @@ More ingress features:
 - Subdomain-based routing
 
 ```bash
+# Make your VM if not already present
+hypeman run --name my-app nginx:alpine
+
 # This requires configuring the Hypeman server with DNS credentials
-hypeman ingress create --name my-tls-ingress my-app --hostname example.com -p 80 --host-port 7443 --tls
+# Change --hostname to a domain you own
+hypeman ingress create --name my-tls-ingress my-app --hostname hello.hypeman-development.com -p 80 --host-port 7443 --tls
+
+# Curl through your TLS-terminating reverse proxy configuration
+curl \
+  --resolve hello.hypeman-development.com:7443:127.0.0.1 \
+  https://hello.hypeman-development.com:7443
 
 # OR... Ingress also supports subdomain-based routing
-hypeman ingress create --name my-tls-subdomain-ingress '{instance}' --hostname '{instance}.example.com' -p 80 --host-port 8443 --tls
+hypeman ingress create --name my-tls-subdomain-ingress '{instance}' --hostname '{instance}.hypeman-development.com' -p 80 --host-port 8443 --tls
 
 # Curling through the subdomain-based routing
-curl --header "Host: my-app.example.com" https://127.0.0.1:8443
+curl \
+  --resolve my-app.hypeman-development.com:8443:127.0.0.1 \
+  https://my-app.hypeman-development.com:8443
+
+# Delete all ingress
+hypeman ingress delete --all
 ```
 
 More logging features:
