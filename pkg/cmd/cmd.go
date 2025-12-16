@@ -131,6 +131,16 @@ func init() {
 				},
 			},
 			{
+				Name:     "devices",
+				Category: "API RESOURCE",
+				Commands: []*cli.Command{
+					&devicesCreate,
+					&devicesRetrieve,
+					&devicesList,
+					&devicesListAvailable,
+				},
+			},
+			{
 				Name:     "ingresses",
 				Category: "API RESOURCE",
 				Commands: []*cli.Command{

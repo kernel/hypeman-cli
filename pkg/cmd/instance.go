@@ -29,6 +29,11 @@ var instancesCreate = cli.Command{
 			Usage:    "Human-readable name (lowercase letters, digits, and dashes only; cannot start or end with a dash)",
 			BodyPath: "name",
 		},
+		&requestflag.Flag[[]string]{
+			Name:     "device",
+			Usage:    "Device IDs or names to attach for GPU/PCI passthrough",
+			BodyPath: "devices",
+		},
 		&requestflag.Flag[any]{
 			Name:     "env",
 			Usage:    "Environment variables",
