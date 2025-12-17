@@ -23,6 +23,7 @@ func init() {
 	Command = &cli.Command{
 		Name:    "hypeman",
 		Usage:   "CLI for the hypeman API",
+		Suggest: true,
 		Version: Version,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
