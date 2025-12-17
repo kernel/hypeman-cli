@@ -82,51 +82,14 @@ func streamOutput(label string, generateOutput func(w *os.File) error) error {
 		return streamToStdout(generateOutput)
 	}
 
-	// Windows lacks UNIX socket APIs, so we fall back to pipes there or if
-	// socket creation fails. We prefer sockets when available because they
-	// allow for smaller buffer sizes, preventing unnecessary data streaming
-	// from the backend. Pipes typically have large buffers but serve as a
-	// decent alternative when sockets aren't available.
-	if runtime.GOOS == "windows" {
-		return streamToPagerWithPipe(label, generateOutput)
-	}
-
-	// Try to use socket pair for better buffer control
-	pagerInput, pid, err := openSocketPairPager(label)
-	if err != nil || pagerInput == nil {
-		// Fall back to pipe if socket setup fails
-		return streamToPagerWithPipe(label, generateOutput)
-	}
-	defer pagerInput.Close()
-
-	// If we would be streaming to a terminal and aren't forcing color one way
-	// or the other, we should configure things to use color so the pager gets
-	// colorized input.
-	if isTerminal(os.Stdout) && os.Getenv("FORCE_COLOR") == "" {
-		os.Setenv("FORCE_COLOR", "1")
-	}
-
-	// If the pager exits before reading all input, then generateOutput() will
-	// produce a broken pipe error, which is fine and we don't want to propagate it.
-	if err := generateOutput(pagerInput); err != nil &&
-		!strings.Contains(err.Error(), "broken pipe") {
-		return err
-	}
-
-	// Close the file NOW before we wait for the child process to terminate.
-	// This way, the child will receive the end-of-file signal and know that
-	// there is no more input. Otherwise the child process may block
-	// indefinitely waiting for another line (this can happen when streaming
-	// less than a screenful of data to a pager).
-	pagerInput.Close()
-
-	// Wait for child process to exit
-	var wstatus syscall.WaitStatus
-	_, err = syscall.Wait4(pid, &wstatus, 0, nil)
-	if wstatus.ExitStatus() != 0 {
-		return fmt.Errorf("Pager exited with non-zero exit status: %d", wstatus.ExitStatus())
-	}
-	return err
+	// When streaming output on Unix-like systems, there's a special trick involving creating two socket pairs
+	// that we prefer because it supports small buffer sizes which results in less pagination per buffer. The
+	// constructs needed to run it don't exist on Windows builds, so we have this function broken up into
+	// OS-specific files with conditional build comments. Under Windows (and in case our fancy constructs fail
+	// on Unix), we fall back to using pipes (`streamToPagerWithPipe`), which are OS agnostic.
+	//
+	// Defined in either cmdutil_unix.go or cmdutil_windows.go.
+	return streamOutputOSSpecific(label, generateOutput)
 }
 
 func streamToPagerWithPipe(label string, generateOutput func(w *os.File) error) error {
