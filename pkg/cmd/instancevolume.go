@@ -65,6 +65,7 @@ func handleInstancesVolumesAttach(ctx context.Context, cmd *cli.Command) error {
 	if len(unusedArgs) > 0 {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
+
 	params := hypeman.InstanceVolumeAttachParams{
 		ID: cmd.Value("id").(string),
 	}
@@ -74,6 +75,7 @@ func handleInstancesVolumesAttach(ctx context.Context, cmd *cli.Command) error {
 		apiquery.NestedQueryFormatBrackets,
 		apiquery.ArrayQueryFormatComma,
 		ApplicationJSON,
+		false,
 	)
 	if err != nil {
 		return err
@@ -107,6 +109,7 @@ func handleInstancesVolumesDetach(ctx context.Context, cmd *cli.Command) error {
 	if len(unusedArgs) > 0 {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
+
 	params := hypeman.InstanceVolumeDetachParams{
 		ID: cmd.Value("id").(string),
 	}
@@ -116,6 +119,7 @@ func handleInstancesVolumesDetach(ctx context.Context, cmd *cli.Command) error {
 		apiquery.NestedQueryFormatBrackets,
 		apiquery.ArrayQueryFormatComma,
 		EmptyBody,
+		false,
 	)
 	if err != nil {
 		return err
