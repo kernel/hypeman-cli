@@ -12,7 +12,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/onkernel/hypeman-cli/pkg/jsonview"
+	"github.com/onkernel/hypeman-cli/internal/jsonview"
 	"github.com/onkernel/hypeman-go/option"
 
 	"github.com/itchyny/json2yaml"
