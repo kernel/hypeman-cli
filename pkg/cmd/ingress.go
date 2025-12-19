@@ -24,7 +24,7 @@ var ingressesCreate = cli.Command{
 			Usage:    "Human-readable name (lowercase letters, digits, and dashes only; cannot start or end with a dash)",
 			BodyPath: "name",
 		},
-		&requestflag.Flag[[]any]{
+		&requestflag.Flag[[]map[string]any]{
 			Name:     "rule",
 			Usage:    "Routing rules for this ingress",
 			BodyPath: "rules",

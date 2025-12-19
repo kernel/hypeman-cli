@@ -22,7 +22,7 @@ func TestInstancesCreate(t *testing.T) {
 		"--overlay-size", "20GB",
 		"--size", "2GB",
 		"--vcpus", "2",
-		"--volume", "{mount_path: /mnt/data, volume_id: vol-abc123, overlay: true, overlay_size: 1GB, readonly: true}\n",
+		"--volume", "{mount_path: /mnt/data, volume_id: vol-abc123, overlay: true, overlay_size: 1GB, readonly: true}",
 	)
 }
 

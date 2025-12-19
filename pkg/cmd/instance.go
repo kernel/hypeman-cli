@@ -35,7 +35,7 @@ var instancesCreate = cli.Command{
 			Usage:    "Device IDs or names to attach for GPU/PCI passthrough",
 			BodyPath: "devices",
 		},
-		&requestflag.Flag[any]{
+		&requestflag.Flag[map[string]string]{
 			Name:     "env",
 			Usage:    "Environment variables",
 			BodyPath: "env",
@@ -46,7 +46,7 @@ var instancesCreate = cli.Command{
 			Default:  "3GB",
 			BodyPath: "hotplug_size",
 		},
-		&requestflag.Flag[any]{
+		&requestflag.Flag[map[string]bool]{
 			Name:     "network",
 			Usage:    "Network configuration for the instance",
 			BodyPath: "network",
@@ -69,7 +69,7 @@ var instancesCreate = cli.Command{
 			Default:  2,
 			BodyPath: "vcpus",
 		},
-		&requestflag.Flag[[]any]{
+		&requestflag.Flag[[]map[string]any]{
 			Name:     "volume",
 			Usage:    "Volumes to attach to the instance at creation time",
 			BodyPath: "volumes",
