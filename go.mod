@@ -12,7 +12,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/itchyny/json2yaml v0.1.4
 	github.com/muesli/reflow v0.3.0
-	github.com/onkernel/hypeman-go v0.7.0
+	github.com/onkernel/hypeman-go v0.7.1-0.20251223043134-e172b69eca2b
 	github.com/tidwall/gjson v1.18.0
 	github.com/tidwall/pretty v1.2.1
 	github.com/urfave/cli-docs/v3 v3.0.0-alpha6
@@ -74,3 +74,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250825161204-c5933d9347a5 // indirect
 	google.golang.org/grpc v1.75.1 // indirect
 )
+
+replace github.com/onkernel/hypeman-go => ../hypeman-go
