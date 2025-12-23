@@ -112,6 +112,7 @@ func init() {
 					&instancesDelete,
 					&instancesStandby,
 					&instancesStart,
+					&instancesStat,
 					&instancesStop,
 				},
 			},

@@ -176,6 +176,28 @@ var instancesStart = cli.Command{
 	HideHelpCommand: true,
 }
 
+var instancesStat = cli.Command{
+	Name:  "stat",
+	Usage: "Returns information about a path in the guest filesystem. Useful for checking if\na path exists, its type, and permissions before performing file operations.",
+	Flags: []cli.Flag{
+		&requestflag.Flag[string]{
+			Name: "id",
+		},
+		&requestflag.Flag[string]{
+			Name:      "path",
+			Usage:     "Path to stat in the guest filesystem",
+			QueryPath: "path",
+		},
+		&requestflag.Flag[bool]{
+			Name:      "follow-links",
+			Usage:     "Follow symbolic links (like stat vs lstat)",
+			QueryPath: "follow_links",
+		},
+	},
+	Action:          handleInstancesStat,
+	HideHelpCommand: true,
+}
+
 var instancesStop = cli.Command{
 	Name:  "stop",
 	Usage: "Stop instance (graceful shutdown)",
@@ -458,6 +480,48 @@ func handleInstancesStart(ctx context.Context, cmd *cli.Command) error {
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
 	return ShowJSON(os.Stdout, "instances start", json, format, transform)
+}
+
+func handleInstancesStat(ctx context.Context, cmd *cli.Command) error {
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	unusedArgs := cmd.Args().Slice()
+	if !cmd.IsSet("id") && len(unusedArgs) > 0 {
+		cmd.Set("id", unusedArgs[0])
+		unusedArgs = unusedArgs[1:]
+	}
+	if len(unusedArgs) > 0 {
+		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
+	}
+
+	params := hypeman.InstanceStatParams{}
+
+	options, err := flagOptions(
+		cmd,
+		apiquery.NestedQueryFormatBrackets,
+		apiquery.ArrayQueryFormatComma,
+		EmptyBody,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	var res []byte
+	options = append(options, option.WithResponseBodyInto(&res))
+	_, err = client.Instances.Stat(
+		ctx,
+		cmd.Value("id").(string),
+		params,
+		options...,
+	)
+	if err != nil {
+		return err
+	}
+
+	obj := gjson.ParseBytes(res)
+	format := cmd.Root().String("format")
+	transform := cmd.Root().String("transform")
+	return ShowJSON(os.Stdout, "instances stat", obj, format, transform)
 }
 
 func handleInstancesStop(ctx context.Context, cmd *cli.Command) error {
