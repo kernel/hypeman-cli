@@ -35,6 +35,11 @@ var instancesCreate = cli.Command{
 			Usage:    "Device IDs or names to attach for GPU/PCI passthrough",
 			BodyPath: "devices",
 		},
+		&requestflag.Flag[string]{
+			Name:     "disk-io-bps",
+			Usage:    `Disk I/O rate limit (e.g., "100MB/s", "500MB/s"). Defaults to proportional share based on CPU allocation if configured.`,
+			BodyPath: "disk_io_bps",
+		},
 		&requestflag.Flag[map[string]string]{
 			Name:     "env",
 			Usage:    "Environment variables",
@@ -51,7 +56,7 @@ var instancesCreate = cli.Command{
 			Usage:    "Hypervisor to use for this instance. Defaults to server configuration.",
 			BodyPath: "hypervisor",
 		},
-		&requestflag.Flag[map[string]bool]{
+		&requestflag.Flag[map[string]any]{
 			Name:     "network",
 			Usage:    "Network configuration for the instance",
 			BodyPath: "network",
