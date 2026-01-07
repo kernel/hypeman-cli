@@ -4,7 +4,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -389,16 +388,7 @@ func handleInstancesLogs(ctx context.Context, cmd *cli.Command) error {
 		params,
 		options...,
 	)
-	for stream.Next() {
-		response := stream.Current()
-		jsonData, err := json.Marshal(response)
-		if err != nil {
-			return err
-		}
-		obj := gjson.ParseBytes(jsonData)
-		ShowJSON(os.Stdout, "instances logs", obj, format, transform)
-	}
-	return stream.Err()
+	return ShowJSONIterator(os.Stdout, "instances logs", stream, format, transform)
 }
 
 func handleInstancesRestore(ctx context.Context, cmd *cli.Command) error {
