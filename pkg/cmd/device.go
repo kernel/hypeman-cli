@@ -22,6 +22,7 @@ var devicesCreate = cli.Command{
 		&requestflag.Flag[string]{
 			Name:     "pci-address",
 			Usage:    `PCI address of the device (required, e.g., "0000:a2:00.0")`,
+			Required: true,
 			BodyPath: "pci_address",
 		},
 		&requestflag.Flag[string]{
@@ -39,7 +40,8 @@ var devicesRetrieve = cli.Command{
 	Usage: "Get device details",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 	},
 	Action:          handleDevicesRetrieve,
@@ -59,7 +61,8 @@ var devicesDelete = cli.Command{
 	Usage: "Unregister device",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 	},
 	Action:          handleDevicesDelete,

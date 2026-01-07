@@ -23,11 +23,13 @@ var instancesCreate = cli.Command{
 		&requestflag.Flag[string]{
 			Name:     "image",
 			Usage:    "OCI image reference",
+			Required: true,
 			BodyPath: "image",
 		},
 		&requestflag.Flag[string]{
 			Name:     "name",
 			Usage:    "Human-readable name (lowercase letters, digits, and dashes only; cannot start or end with a dash)",
+			Required: true,
 			BodyPath: "name",
 		},
 		&requestflag.Flag[[]string]{
@@ -102,7 +104,8 @@ var instancesDelete = cli.Command{
 	Usage: "Stop and delete instance",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 	},
 	Action:          handleInstancesDelete,
@@ -114,7 +117,8 @@ var instancesGet = cli.Command{
 	Usage: "Get instance details",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 	},
 	Action:          handleInstancesGet,
@@ -126,7 +130,8 @@ var instancesLogs = cli.Command{
 	Usage: "Streams instance logs as Server-Sent Events. Use the `source` parameter to\nselect which log to stream:",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 		&requestflag.Flag[bool]{
 			Name:      "follow",
@@ -155,7 +160,8 @@ var instancesRestore = cli.Command{
 	Usage: "Restore instance from standby",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 	},
 	Action:          handleInstancesRestore,
@@ -167,7 +173,8 @@ var instancesStandby = cli.Command{
 	Usage: "Put instance in standby (pause, snapshot, delete VMM)",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 	},
 	Action:          handleInstancesStandby,
@@ -179,7 +186,8 @@ var instancesStart = cli.Command{
 	Usage: "Start a stopped instance",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 	},
 	Action:          handleInstancesStart,
@@ -191,11 +199,13 @@ var instancesStat = cli.Command{
 	Usage: "Returns information about a path in the guest filesystem. Useful for checking if\na path exists, its type, and permissions before performing file operations.",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 		&requestflag.Flag[string]{
 			Name:      "path",
 			Usage:     "Path to stat in the guest filesystem",
+			Required:  true,
 			QueryPath: "path",
 		},
 		&requestflag.Flag[bool]{
@@ -213,7 +223,8 @@ var instancesStop = cli.Command{
 	Usage: "Stop instance (graceful shutdown)",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 	},
 	Action:          handleInstancesStop,

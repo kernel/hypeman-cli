@@ -22,11 +22,13 @@ var volumesCreate = cli.Command{
 		&requestflag.Flag[string]{
 			Name:     "name",
 			Usage:    "Volume name",
+			Required: true,
 			BodyPath: "name",
 		},
 		&requestflag.Flag[int64]{
 			Name:     "size-gb",
 			Usage:    "Size in gigabytes",
+			Required: true,
 			BodyPath: "size_gb",
 		},
 		&requestflag.Flag[string]{
@@ -52,7 +54,8 @@ var volumesDelete = cli.Command{
 	Usage: "Delete volume",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 	},
 	Action:          handleVolumesDelete,
@@ -64,7 +67,8 @@ var volumesGet = cli.Command{
 	Usage: "Get volume details",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 	},
 	Action:          handleVolumesGet,

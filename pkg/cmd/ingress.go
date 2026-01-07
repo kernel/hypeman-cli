@@ -22,11 +22,13 @@ var ingressesCreate = cli.Command{
 		&requestflag.Flag[string]{
 			Name:     "name",
 			Usage:    "Human-readable name (lowercase letters, digits, and dashes only; cannot start or end with a dash)",
+			Required: true,
 			BodyPath: "name",
 		},
 		&requestflag.Flag[[]map[string]any]{
 			Name:     "rule",
 			Usage:    "Routing rules for this ingress",
+			Required: true,
 			BodyPath: "rules",
 		},
 	},
@@ -47,7 +49,8 @@ var ingressesDelete = cli.Command{
 	Usage: "Delete ingress",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 	},
 	Action:          handleIngressesDelete,
@@ -59,7 +62,8 @@ var ingressesGet = cli.Command{
 	Usage: "Get ingress details",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 	},
 	Action:          handleIngressesGet,

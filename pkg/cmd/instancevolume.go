@@ -20,14 +20,17 @@ var instancesVolumesAttach = cli.Command{
 	Usage: "Attach volume to instance",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 		&requestflag.Flag[string]{
-			Name: "volume-id",
+			Name:     "volume-id",
+			Required: true,
 		},
 		&requestflag.Flag[string]{
 			Name:     "mount-path",
 			Usage:    "Path where volume should be mounted",
+			Required: true,
 			BodyPath: "mount_path",
 		},
 		&requestflag.Flag[bool]{
@@ -45,10 +48,12 @@ var instancesVolumesDetach = cli.Command{
 	Usage: "Detach volume from instance",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "id",
+			Name:     "id",
+			Required: true,
 		},
 		&requestflag.Flag[string]{
-			Name: "volume-id",
+			Name:     "volume-id",
+			Required: true,
 		},
 	},
 	Action:          handleInstancesVolumesDetach,

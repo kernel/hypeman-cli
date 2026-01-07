@@ -23,6 +23,7 @@ var imagesCreate = cli.Command{
 		&requestflag.Flag[string]{
 			Name:     "name",
 			Usage:    "OCI image reference (e.g., docker.io/library/nginx:latest)",
+			Required: true,
 			BodyPath: "name",
 		},
 	},
@@ -43,7 +44,8 @@ var imagesDelete = cli.Command{
 	Usage: "Delete image",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "name",
+			Name:     "name",
+			Required: true,
 		},
 	},
 	Action:          handleImagesDelete,
@@ -55,7 +57,8 @@ var imagesGet = cli.Command{
 	Usage: "Get image details",
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name: "name",
+			Name:     "name",
+			Required: true,
 		},
 	},
 	Action:          handleImagesGet,
