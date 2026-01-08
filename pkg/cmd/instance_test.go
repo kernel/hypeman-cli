@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/onkernel/hypeman-cli/internal/mocktest"
+	"github.com/onkernel/hypeman-cli/internal/requestflag"
 )
 
 func TestInstancesCreate(t *testing.T) {
@@ -25,6 +26,33 @@ func TestInstancesCreate(t *testing.T) {
 		"--size", "2GB",
 		"--vcpus", "2",
 		"--volume", "{mount_path: /mnt/data, volume_id: vol-abc123, overlay: true, overlay_size: 1GB, readonly: true}",
+	)
+
+	// Check that inner flags have been set up correctly
+	requestflag.CheckInnerFlags(instancesCreate)
+
+	// Alternative argument passing style using inner flags
+	mocktest.TestRunMockTestWithFlags(
+		t,
+		"instances", "create",
+		"--image", "docker.io/library/alpine:latest",
+		"--name", "my-workload-1",
+		"--device", "l4-gpu",
+		"--disk-io-bps", "100MB/s",
+		"--env", "{PORT: '3000', NODE_ENV: production}",
+		"--hotplug-size", "2GB",
+		"--hypervisor", "cloud-hypervisor",
+		"--network.bandwidth_download", "1Gbps",
+		"--network.bandwidth_upload", "1Gbps",
+		"--network.enabled=true",
+		"--overlay-size", "20GB",
+		"--size", "2GB",
+		"--vcpus", "2",
+		"--volume.mount_path", "/mnt/data",
+		"--volume.volume_id", "vol-abc123",
+		"--volume.overlay=true",
+		"--volume.overlay_size", "1GB",
+		"--volume.readonly=true",
 	)
 }
 
@@ -60,7 +88,7 @@ func TestInstancesLogs(t *testing.T) {
 		t,
 		"instances", "logs",
 		"--id", "id",
-		"--follow",
+		"--follow=true",
 		"--source", "app",
 		"--tail", "0",
 	)
@@ -100,7 +128,7 @@ func TestInstancesStat(t *testing.T) {
 		"instances", "stat",
 		"--id", "id",
 		"--path", "path",
-		"--follow-links",
+		"--follow-links=true",
 	)
 }
 

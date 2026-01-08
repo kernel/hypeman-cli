@@ -16,7 +16,7 @@ func TestInstancesVolumesAttach(t *testing.T) {
 		"--id", "id",
 		"--volume-id", "volumeId",
 		"--mount-path", "/mnt/data",
-		"--readonly",
+		"--readonly=true",
 	)
 }
 

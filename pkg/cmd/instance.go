@@ -15,7 +15,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var instancesCreate = cli.Command{
+var instancesCreate = requestflag.WithInnerFlags(cli.Command{
 	Name:  "create",
 	Usage: "Create and start instance",
 	Flags: []cli.Flag{
@@ -41,7 +41,7 @@ var instancesCreate = cli.Command{
 			Usage:    `Disk I/O rate limit (e.g., "100MB/s", "500MB/s"). Defaults to proportional share based on CPU allocation if configured.`,
 			BodyPath: "disk_io_bps",
 		},
-		&requestflag.Flag[map[string]string]{
+		&requestflag.Flag[map[string]any]{
 			Name:     "env",
 			Usage:    "Environment variables",
 			BodyPath: "env",
@@ -88,7 +88,52 @@ var instancesCreate = cli.Command{
 	},
 	Action:          handleInstancesCreate,
 	HideHelpCommand: true,
-}
+}, map[string][]requestflag.HasOuterFlag{
+	"network": {
+		&requestflag.InnerFlag[string]{
+			Name:       "network.bandwidth-download",
+			Usage:      `Download bandwidth limit (external→VM, e.g., "1Gbps", "125MB/s"). Defaults to proportional share based on CPU allocation.`,
+			InnerField: "bandwidth_download",
+		},
+		&requestflag.InnerFlag[string]{
+			Name:       "network.bandwidth-upload",
+			Usage:      `Upload bandwidth limit (VM→external, e.g., "1Gbps", "125MB/s"). Defaults to proportional share based on CPU allocation.`,
+			InnerField: "bandwidth_upload",
+		},
+		&requestflag.InnerFlag[bool]{
+			Name:       "network.enabled",
+			Usage:      "Whether to attach instance to the default network",
+			InnerField: "enabled",
+		},
+	},
+	"volume": {
+		&requestflag.InnerFlag[string]{
+			Name:       "volume.mount-path",
+			Usage:      "Path where volume is mounted in the guest",
+			InnerField: "mount_path",
+		},
+		&requestflag.InnerFlag[string]{
+			Name:       "volume.volume-id",
+			Usage:      "Volume identifier",
+			InnerField: "volume_id",
+		},
+		&requestflag.InnerFlag[bool]{
+			Name:       "volume.overlay",
+			Usage:      "Create per-instance overlay for writes (requires readonly=true)",
+			InnerField: "overlay",
+		},
+		&requestflag.InnerFlag[string]{
+			Name:       "volume.overlay-size",
+			Usage:      `Max overlay size as human-readable string (e.g., "1GB"). Required if overlay=true.`,
+			InnerField: "overlay_size",
+		},
+		&requestflag.InnerFlag[bool]{
+			Name:       "volume.readonly",
+			Usage:      "Whether volume is mounted read-only",
+			InnerField: "readonly",
+		},
+	},
+})
 
 var instancesList = cli.Command{
 	Name:            "list",

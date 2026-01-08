@@ -15,7 +15,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var ingressesCreate = cli.Command{
+var ingressesCreate = requestflag.WithInnerFlags(cli.Command{
 	Name:  "create",
 	Usage: "Create ingress",
 	Flags: []cli.Flag{
@@ -34,7 +34,28 @@ var ingressesCreate = cli.Command{
 	},
 	Action:          handleIngressesCreate,
 	HideHelpCommand: true,
-}
+}, map[string][]requestflag.HasOuterFlag{
+	"rule": {
+		&requestflag.InnerFlag[map[string]any]{
+			Name:       "rule.match",
+			InnerField: "match",
+		},
+		&requestflag.InnerFlag[map[string]any]{
+			Name:       "rule.target",
+			InnerField: "target",
+		},
+		&requestflag.InnerFlag[bool]{
+			Name:       "rule.redirect-http",
+			Usage:      "Auto-create HTTP to HTTPS redirect for this hostname (only applies when tls is enabled)",
+			InnerField: "redirect_http",
+		},
+		&requestflag.InnerFlag[bool]{
+			Name:       "rule.tls",
+			Usage:      "Enable TLS termination (certificate auto-issued via ACME).",
+			InnerField: "tls",
+		},
+	},
+})
 
 var ingressesList = cli.Command{
 	Name:            "list",
