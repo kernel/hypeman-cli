@@ -56,19 +56,6 @@ var devicesList = cli.Command{
 	HideHelpCommand: true,
 }
 
-var devicesDelete = cli.Command{
-	Name:  "delete",
-	Usage: "Unregister device",
-	Flags: []cli.Flag{
-		&requestflag.Flag[string]{
-			Name:     "id",
-			Required: true,
-		},
-	},
-	Action:          handleDevicesDelete,
-	HideHelpCommand: true,
-}
-
 var devicesListAvailable = cli.Command{
 	Name:            "list-available",
 	Usage:           "Discover passthrough-capable devices on host",
@@ -176,31 +163,6 @@ func handleDevicesList(ctx context.Context, cmd *cli.Command) error {
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
 	return ShowJSON(os.Stdout, "devices list", obj, format, transform)
-}
-
-func handleDevicesDelete(ctx context.Context, cmd *cli.Command) error {
-	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
-	unusedArgs := cmd.Args().Slice()
-	if !cmd.IsSet("id") && len(unusedArgs) > 0 {
-		cmd.Set("id", unusedArgs[0])
-		unusedArgs = unusedArgs[1:]
-	}
-	if len(unusedArgs) > 0 {
-		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
-	}
-
-	options, err := flagOptions(
-		cmd,
-		apiquery.NestedQueryFormatBrackets,
-		apiquery.ArrayQueryFormatComma,
-		EmptyBody,
-		false,
-	)
-	if err != nil {
-		return err
-	}
-
-	return client.Devices.Delete(ctx, cmd.Value("id").(string), options...)
 }
 
 func handleDevicesListAvailable(ctx context.Context, cmd *cli.Command) error {

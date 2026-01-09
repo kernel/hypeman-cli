@@ -25,15 +25,6 @@ func TestImagesList(t *testing.T) {
 	)
 }
 
-func TestImagesDelete(t *testing.T) {
-	t.Skip("Prism tests are disabled")
-	mocktest.TestRunMockTestWithFlags(
-		t,
-		"images", "delete",
-		"--name", "name",
-	)
-}
-
 func TestImagesGet(t *testing.T) {
 	t.Skip("Prism tests are disabled")
 	mocktest.TestRunMockTestWithFlags(
