@@ -16,8 +16,9 @@ import (
 )
 
 var imagesCreate = cli.Command{
-	Name:  "create",
-	Usage: "Pull and convert OCI image",
+	Name:    "create",
+	Usage:   "Pull and convert OCI image",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "name",
@@ -33,14 +34,16 @@ var imagesCreate = cli.Command{
 var imagesList = cli.Command{
 	Name:            "list",
 	Usage:           "List images",
+	Suggest:         true,
 	Flags:           []cli.Flag{},
 	Action:          handleImagesList,
 	HideHelpCommand: true,
 }
 
 var imagesGet = cli.Command{
-	Name:  "get",
-	Usage: "Get image details",
+	Name:    "get",
+	Usage:   "Get image details",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "name",
