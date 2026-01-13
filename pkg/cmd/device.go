@@ -16,8 +16,9 @@ import (
 )
 
 var devicesCreate = cli.Command{
-	Name:  "create",
-	Usage: "Register a device for passthrough",
+	Name:    "create",
+	Usage:   "Register a device for passthrough",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "pci-address",
@@ -36,8 +37,9 @@ var devicesCreate = cli.Command{
 }
 
 var devicesRetrieve = cli.Command{
-	Name:  "retrieve",
-	Usage: "Get device details",
+	Name:    "retrieve",
+	Usage:   "Get device details",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "id",
@@ -51,6 +53,7 @@ var devicesRetrieve = cli.Command{
 var devicesList = cli.Command{
 	Name:            "list",
 	Usage:           "List registered devices",
+	Suggest:         true,
 	Flags:           []cli.Flag{},
 	Action:          handleDevicesList,
 	HideHelpCommand: true,
@@ -59,6 +62,7 @@ var devicesList = cli.Command{
 var devicesListAvailable = cli.Command{
 	Name:            "list-available",
 	Usage:           "Discover passthrough-capable devices on host",
+	Suggest:         true,
 	Flags:           []cli.Flag{},
 	Action:          handleDevicesListAvailable,
 	HideHelpCommand: true,

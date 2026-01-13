@@ -17,6 +17,7 @@ import (
 var healthCheck = cli.Command{
 	Name:            "check",
 	Usage:           "Health check",
+	Suggest:         true,
 	Flags:           []cli.Flag{},
 	Action:          handleHealthCheck,
 	HideHelpCommand: true,

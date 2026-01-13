@@ -86,6 +86,7 @@ func init() {
 		{
 				Name:     "health",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&healthCheck,
 				},
@@ -93,6 +94,7 @@ func init() {
 			{
 				Name:     "images",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&imagesCreate,
 					&imagesList,
@@ -102,6 +104,7 @@ func init() {
 			{
 				Name:     "instances",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&instancesCreate,
 					&instancesList,
@@ -119,6 +122,7 @@ func init() {
 			{
 				Name:     "instances:volumes",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&instancesVolumesAttach,
 					&instancesVolumesDetach,
@@ -127,6 +131,7 @@ func init() {
 			{
 				Name:     "volumes",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&volumesCreate,
 					&volumesList,
@@ -136,6 +141,7 @@ func init() {
 			{
 				Name:     "devices",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&devicesCreate,
 					&devicesRetrieve,
@@ -146,6 +152,7 @@ func init() {
 			{
 				Name:     "ingresses",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&ingressesCreate,
 					&ingressesList,

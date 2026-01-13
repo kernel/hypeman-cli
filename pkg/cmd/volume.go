@@ -16,8 +16,9 @@ import (
 )
 
 var volumesCreate = cli.Command{
-	Name:  "create",
-	Usage: "Creates a new volume. Supports two modes:",
+	Name:    "create",
+	Usage:   "Creates a new volume. Supports two modes:",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "name",
@@ -44,14 +45,16 @@ var volumesCreate = cli.Command{
 var volumesList = cli.Command{
 	Name:            "list",
 	Usage:           "List volumes",
+	Suggest:         true,
 	Flags:           []cli.Flag{},
 	Action:          handleVolumesList,
 	HideHelpCommand: true,
 }
 
 var volumesGet = cli.Command{
-	Name:  "get",
-	Usage: "Get volume details",
+	Name:    "get",
+	Usage:   "Get volume details",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "id",

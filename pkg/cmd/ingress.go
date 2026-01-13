@@ -16,8 +16,9 @@ import (
 )
 
 var ingressesCreate = requestflag.WithInnerFlags(cli.Command{
-	Name:  "create",
-	Usage: "Create ingress",
+	Name:    "create",
+	Usage:   "Create ingress",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "name",
@@ -60,14 +61,16 @@ var ingressesCreate = requestflag.WithInnerFlags(cli.Command{
 var ingressesList = cli.Command{
 	Name:            "list",
 	Usage:           "List ingresses",
+	Suggest:         true,
 	Flags:           []cli.Flag{},
 	Action:          handleIngressesList,
 	HideHelpCommand: true,
 }
 
 var ingressesGet = cli.Command{
-	Name:  "get",
-	Usage: "Get ingress details",
+	Name:    "get",
+	Usage:   "Get ingress details",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "id",

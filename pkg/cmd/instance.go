@@ -16,8 +16,9 @@ import (
 )
 
 var instancesCreate = requestflag.WithInnerFlags(cli.Command{
-	Name:  "create",
-	Usage: "Create and start instance",
+	Name:    "create",
+	Usage:   "Create and start instance",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "image",
@@ -138,14 +139,16 @@ var instancesCreate = requestflag.WithInnerFlags(cli.Command{
 var instancesList = cli.Command{
 	Name:            "list",
 	Usage:           "List instances",
+	Suggest:         true,
 	Flags:           []cli.Flag{},
 	Action:          handleInstancesList,
 	HideHelpCommand: true,
 }
 
 var instancesGet = cli.Command{
-	Name:  "get",
-	Usage: "Get instance details",
+	Name:    "get",
+	Usage:   "Get instance details",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "id",
@@ -157,8 +160,9 @@ var instancesGet = cli.Command{
 }
 
 var instancesLogs = cli.Command{
-	Name:  "logs",
-	Usage: "Streams instance logs as Server-Sent Events. Use the `source` parameter to\nselect which log to stream:",
+	Name:    "logs",
+	Usage:   "Streams instance logs as Server-Sent Events. Use the `source` parameter to\nselect which log to stream:",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "id",
@@ -187,8 +191,9 @@ var instancesLogs = cli.Command{
 }
 
 var instancesRestore = cli.Command{
-	Name:  "restore",
-	Usage: "Restore instance from standby",
+	Name:    "restore",
+	Usage:   "Restore instance from standby",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "id",
@@ -200,8 +205,9 @@ var instancesRestore = cli.Command{
 }
 
 var instancesStandby = cli.Command{
-	Name:  "standby",
-	Usage: "Put instance in standby (pause, snapshot, delete VMM)",
+	Name:    "standby",
+	Usage:   "Put instance in standby (pause, snapshot, delete VMM)",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "id",
@@ -213,8 +219,9 @@ var instancesStandby = cli.Command{
 }
 
 var instancesStart = cli.Command{
-	Name:  "start",
-	Usage: "Start a stopped instance",
+	Name:    "start",
+	Usage:   "Start a stopped instance",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "id",
@@ -226,8 +233,9 @@ var instancesStart = cli.Command{
 }
 
 var instancesStat = cli.Command{
-	Name:  "stat",
-	Usage: "Returns information about a path in the guest filesystem. Useful for checking if\na path exists, its type, and permissions before performing file operations.",
+	Name:    "stat",
+	Usage:   "Returns information about a path in the guest filesystem. Useful for checking if\na path exists, its type, and permissions before performing file operations.",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "id",
@@ -250,8 +258,9 @@ var instancesStat = cli.Command{
 }
 
 var instancesStop = cli.Command{
-	Name:  "stop",
-	Usage: "Stop instance (graceful shutdown)",
+	Name:    "stop",
+	Usage:   "Stop instance (graceful shutdown)",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "id",

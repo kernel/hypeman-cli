@@ -16,8 +16,9 @@ import (
 )
 
 var instancesVolumesAttach = cli.Command{
-	Name:  "attach",
-	Usage: "Attach volume to instance",
+	Name:    "attach",
+	Usage:   "Attach volume to instance",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "id",
@@ -44,8 +45,9 @@ var instancesVolumesAttach = cli.Command{
 }
 
 var instancesVolumesDetach = cli.Command{
-	Name:  "detach",
-	Usage: "Detach volume from instance",
+	Name:    "detach",
+	Usage:   "Detach volume from instance",
+	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "id",
