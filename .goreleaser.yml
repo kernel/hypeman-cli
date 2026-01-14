@@ -30,6 +30,15 @@ builds:
     ldflags:
       - '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}}'
 
+  - id: windows
+    goos: [windows]
+    goarch: ['386', amd64, arm64]
+    binary: '{{ .ProjectName }}'
+    main: ./cmd/hypeman/main.go
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    ldflags:
+      - '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}}'
+
 archives:
   - id: linux-archive
     ids: [linux]
@@ -45,6 +54,14 @@ archives:
     files:
       - completions/*
       - man/*/*
+  - id: windows-archive
+    ids: [windows]
+    name_template: '{{ .ProjectName }}_{{ .Version }}_windows_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+    formats: [zip]
+    files:
+      - completions/*
+      - man/*/*
+
 snapshot:
   version_template: '{{ .Tag }}-next'
 
