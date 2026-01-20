@@ -67,7 +67,7 @@ snapshot:
 
 nfpms:
   - license: Apache-2.0
-    maintainer: 
+    maintainer: Kernel <support@kernel.dev>
     bindir: /usr
     formats:
       - apk
@@ -81,10 +81,10 @@ nfpms:
 brews:
   - name: hypeman
     repository:
-      owner: onkernel
+      owner: kernel
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    homepage: https://github.com/onkernel/hypeman
+    homepage: https://github.com/kernel/hypeman
     description: orchestrate cloud-hypervisor VMs
     license: Apache-2.0
     directory: Formula
