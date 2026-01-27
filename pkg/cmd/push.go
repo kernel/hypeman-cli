@@ -103,7 +103,8 @@ type authTransport struct {
 
 func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if t.token != "" {
-		// Use Bearer auth directly
+		// Clone request to avoid modifying the original (RoundTripper contract)
+		req = req.Clone(req.Context())
 		req.Header.Set("Authorization", "Bearer "+t.token)
 	}
 	return t.base.RoundTrip(req)
