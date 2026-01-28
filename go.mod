@@ -78,4 +78,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/onkernel/hypeman-go => github.com/stainless-sdks/hypeman-go v0.0.0-20251223192437-9689c5062036
+replace github.com/kernel/hypeman-go => github.com/stainless-sdks/hypeman-go v0.0.0-20251223192437-9689c5062036

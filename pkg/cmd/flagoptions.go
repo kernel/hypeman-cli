@@ -10,7 +10,7 @@ import (
 
 	"github.com/kernel/hypeman-cli/internal/apiform"
 	"github.com/kernel/hypeman-cli/internal/apiquery"
-	"github.com/onkernel/hypeman-cli/internal/debugmiddleware"
+	"github.com/kernel/hypeman-cli/internal/debugmiddleware"
 	"github.com/kernel/hypeman-cli/internal/requestflag"
 	"github.com/kernel/hypeman-go/option"
 

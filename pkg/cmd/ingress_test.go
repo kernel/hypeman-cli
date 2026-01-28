@@ -5,8 +5,8 @@ package cmd
 import (
 	"testing"
 
-	"github.com/onkernel/hypeman-cli/internal/mocktest"
-	"github.com/onkernel/hypeman-cli/internal/requestflag"
+	"github.com/kernel/hypeman-cli/internal/mocktest"
+	"github.com/kernel/hypeman-cli/internal/requestflag"
 )
 
 func TestIngressesCreate(t *testing.T) {

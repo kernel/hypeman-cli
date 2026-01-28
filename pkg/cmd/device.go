@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/onkernel/hypeman-cli/internal/apiquery"
-	"github.com/onkernel/hypeman-cli/internal/requestflag"
+	"github.com/kernel/hypeman-cli/internal/apiquery"
+	"github.com/kernel/hypeman-cli/internal/requestflag"
 	"github.com/onkernel/hypeman-go"
 	"github.com/onkernel/hypeman-go/option"
 	"github.com/tidwall/gjson"
