@@ -18,7 +18,7 @@ brew install hypeman
 <!-- x-release-please-start-version -->
 
 ```sh
-go install 'github.com/onkernel/hypeman-cli/cmd/hypeman@latest'
+go install 'github.com/kernel/hypeman-cli/cmd/hypeman@latest'
 ```
 
 ### Running Locally

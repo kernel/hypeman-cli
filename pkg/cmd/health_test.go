@@ -5,7 +5,7 @@ package cmd
 import (
 	"testing"
 
-	"github.com/onkernel/hypeman-cli/internal/mocktest"
+	"github.com/kernel/hypeman-cli/internal/mocktest"
 )
 
 func TestHealthCheck(t *testing.T) {

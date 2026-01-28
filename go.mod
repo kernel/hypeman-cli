@@ -1,4 +1,4 @@
-module github.com/onkernel/hypeman-cli
+module github.com/kernel/hypeman-cli
 
 go 1.25
 

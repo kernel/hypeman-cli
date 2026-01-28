@@ -5,7 +5,7 @@ package cmd
 import (
 	"testing"
 
-	"github.com/onkernel/hypeman-cli/internal/mocktest"
+	"github.com/kernel/hypeman-cli/internal/mocktest"
 )
 
 func TestInstancesVolumesAttach(t *testing.T) {
