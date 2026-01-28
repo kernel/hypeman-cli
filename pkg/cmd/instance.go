@@ -4,6 +4,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -337,6 +338,8 @@ func handleInstancesLogs(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
+	format := cmd.Root().String("format")
+	transform := cmd.Root().String("transform")
 	stream := client.Instances.LogsStreaming(
 		ctx,
 		cmd.Value("id").(string),

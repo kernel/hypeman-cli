@@ -106,6 +106,7 @@ func init() {
 					&instancesCreate,
 					&instancesList,
 					&instancesGet,
+					&instancesLogs,
 					&instancesRestore,
 					&instancesLogs,
 					&instancesDelete,
