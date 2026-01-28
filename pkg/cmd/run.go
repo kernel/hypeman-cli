@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -16,6 +17,26 @@ var runCmd = cli.Command{
 	Name:      "run",
 	Usage:     "Create and start a new instance from an image",
 	ArgsUsage: "<image>",
+	Description: `Create and start a new virtual machine instance from an OCI image.
+
+Examples:
+  # Basic run
+  hypeman run myimage:latest
+
+  # Run with custom resources
+  hypeman run --cpus 4 --memory 8GB myimage:latest
+
+  # Run with vGPU
+  hypeman run --gpu-profile L40S-1Q myimage:latest
+
+  # Run with GPU passthrough
+  hypeman run --device my-gpu myimage:latest
+
+  # Run with QEMU hypervisor
+  hypeman run --hypervisor qemu myimage:latest
+
+  # Run with bandwidth limits
+  hypeman run --bandwidth-down 1Gbps --bandwidth-up 500Mbps myimage:latest`,
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:  "name",
@@ -51,6 +72,33 @@ var runCmd = cli.Command{
 			Usage: "Enable network (default: true)",
 			Value: true,
 		},
+		// GPU/vGPU flags
+		&cli.StringFlag{
+			Name:  "gpu-profile",
+			Usage: `vGPU profile name (e.g., "L40S-1Q", "L40S-2Q")`,
+		},
+		&cli.StringSliceFlag{
+			Name:  "device",
+			Usage: "Device ID or name for PCI/GPU passthrough (can be repeated)",
+		},
+		// Hypervisor flag
+		&cli.StringFlag{
+			Name:  "hypervisor",
+			Usage: `Hypervisor to use: "cloud-hypervisor" or "qemu"`,
+		},
+		// Resource limit flags
+		&cli.StringFlag{
+			Name:  "disk-io",
+			Usage: `Disk I/O rate limit (e.g., "100MB/s", "500MB/s")`,
+		},
+		&cli.StringFlag{
+			Name:  "bandwidth-down",
+			Usage: `Download bandwidth limit (e.g., "1Gbps", "125MB/s")`,
+		},
+		&cli.StringFlag{
+			Name:  "bandwidth-up",
+			Usage: `Upload bandwidth limit (e.g., "1Gbps", "125MB/s")`,
+		},
 	},
 	Action:          handleRun,
 	HideHelpCommand: true,
@@ -67,7 +115,8 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 
 	// Check if image exists and is ready
-	imgInfo, err := client.Images.Get(ctx, image)
+	// URL-encode the image name to handle slashes (e.g., docker.io/library/nginx:latest)
+	imgInfo, err := client.Images.Get(ctx, url.PathEscape(image))
 	if err != nil {
 		// Image not found, try to pull it
 		var apiErr *hypeman.Error
@@ -107,15 +156,67 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	// Build instance params
-	// Note: SDK uses memory in MB, but we accept human-readable format
-	// For simplicity, we pass memory as-is and let the server handle conversion
 	params := hypeman.InstanceNewParams{
-		Image: image,
-		Name:  name,
-		Vcpus: hypeman.Opt(int64(cmd.Int("cpus"))),
+		Image:       image,
+		Name:        name,
+		Vcpus:       hypeman.Opt(int64(cmd.Int("cpus"))),
+		Size:        hypeman.Opt(cmd.String("memory")),
+		OverlaySize: hypeman.Opt(cmd.String("overlay-size")),
+		HotplugSize: hypeman.Opt(cmd.String("hotplug-size")),
 	}
+
 	if len(env) > 0 {
 		params.Env = env
+	}
+
+	// Network configuration
+	networkEnabled := cmd.Bool("network")
+	bandwidthDown := cmd.String("bandwidth-down")
+	bandwidthUp := cmd.String("bandwidth-up")
+
+	if !networkEnabled || bandwidthDown != "" || bandwidthUp != "" {
+		params.Network = hypeman.InstanceNewParamsNetwork{
+			Enabled: hypeman.Opt(networkEnabled),
+		}
+		if bandwidthDown != "" {
+			params.Network.BandwidthDownload = hypeman.Opt(bandwidthDown)
+		}
+		if bandwidthUp != "" {
+			params.Network.BandwidthUpload = hypeman.Opt(bandwidthUp)
+		}
+	}
+
+	// GPU configuration
+	gpuProfile := cmd.String("gpu-profile")
+	if gpuProfile != "" {
+		params.GPU = hypeman.InstanceNewParamsGPU{
+			Profile: hypeman.Opt(gpuProfile),
+		}
+	}
+
+	// Device passthrough
+	devices := cmd.StringSlice("device")
+	if len(devices) > 0 {
+		params.Devices = devices
+	}
+
+	// Hypervisor selection
+	hypervisor := cmd.String("hypervisor")
+	if hypervisor != "" {
+		switch hypervisor {
+		case "cloud-hypervisor", "ch":
+			params.Hypervisor = hypeman.InstanceNewParamsHypervisorCloudHypervisor
+		case "qemu":
+			params.Hypervisor = hypeman.InstanceNewParamsHypervisorQemu
+		default:
+			return fmt.Errorf("invalid hypervisor: %s (must be 'cloud-hypervisor' or 'qemu')", hypervisor)
+		}
+	}
+
+	// Disk I/O limit
+	diskIO := cmd.String("disk-io")
+	if diskIO != "" {
+		params.DiskIoBps = hypeman.Opt(diskIO)
 	}
 
 	fmt.Fprintf(os.Stderr, "Creating instance %s...\n", name)
@@ -173,7 +274,7 @@ func waitForImageReady(ctx context.Context, client *hypeman.Client, img *hypeman
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			updated, err := client.Images.Get(ctx, img.Name)
+			updated, err := client.Images.Get(ctx, url.PathEscape(img.Name))
 			if err != nil {
 				return fmt.Errorf("failed to check image status: %w", err)
 			}
