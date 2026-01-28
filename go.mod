@@ -78,3 +78,5 @@ require (
 	google.golang.org/grpc v1.75.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/onkernel/hypeman-go => github.com/stainless-sdks/hypeman-go v0.0.0-20251223192437-9689c5062036
