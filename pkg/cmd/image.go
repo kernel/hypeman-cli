@@ -20,12 +20,10 @@ var imagesCreate = cli.Command{
 	Name:  "create",
 	Usage: "Pull and convert OCI image",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
-			Name:  "name",
-			Usage: "OCI image reference (e.g., docker.io/library/nginx:latest)",
-			Config: requestflag.RequestConfig{
-				BodyPath: "name",
-			},
+		&requestflag.Flag[string]{
+			Name:     "name",
+			Usage:    "OCI image reference (e.g., docker.io/library/nginx:latest)",
+			BodyPath: "name",
 		},
 	},
 	Action:          handleImagesCreate,
@@ -44,7 +42,7 @@ var imagesDelete = cli.Command{
 	Name:  "delete",
 	Usage: "Delete image",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "name",
 		},
 	},
@@ -56,7 +54,7 @@ var imagesGet = cli.Command{
 	Name:  "get",
 	Usage: "Get image details",
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
+		&requestflag.Flag[string]{
 			Name: "name",
 		},
 	},
