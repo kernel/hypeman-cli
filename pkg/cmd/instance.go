@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/kernel/hypeman-go"
+	"github.com/kernel/hypeman-go/option"
 	"github.com/onkernel/hypeman-cli/internal/apiquery"
 	"github.com/onkernel/hypeman-cli/internal/requestflag"
-	"github.com/onkernel/hypeman-go"
-	"github.com/onkernel/hypeman-go/option"
 	"github.com/tidwall/gjson"
 	"github.com/urfave/cli/v3"
 )
@@ -47,6 +47,11 @@ var instancesCreate = requestflag.WithInnerFlags(cli.Command{
 			Usage:    "Environment variables",
 			BodyPath: "env",
 		},
+		&requestflag.Flag[map[string]any]{
+			Name:     "gpu",
+			Usage:    "GPU configuration for the instance",
+			BodyPath: "gpu",
+		},
 		&requestflag.Flag[string]{
 			Name:     "hotplug-size",
 			Usage:    `Additional memory for hotplug (human-readable format like "3GB", "1G")`,
@@ -75,6 +80,16 @@ var instancesCreate = requestflag.WithInnerFlags(cli.Command{
 			Default:  "1GB",
 			BodyPath: "size",
 		},
+		&requestflag.Flag[bool]{
+			Name:     "skip-guest-agent",
+			Usage:    "Skip guest-agent installation during boot.\nWhen true, the exec and stat APIs will not work for this instance.\nThe instance will still run, but remote command execution will be unavailable.\n",
+			BodyPath: "skip_guest_agent",
+		},
+		&requestflag.Flag[bool]{
+			Name:     "skip-kernel-headers",
+			Usage:    "Skip kernel headers installation during boot for faster startup.\nWhen true, DKMS (Dynamic Kernel Module Support) will not work,\npreventing compilation of out-of-tree kernel modules (e.g., NVIDIA vGPU drivers).\nRecommended for workloads that don't need kernel module compilation.\n",
+			BodyPath: "skip_kernel_headers",
+		},
 		&requestflag.Flag[int64]{
 			Name:     "vcpus",
 			Usage:    "Number of virtual CPUs",
@@ -90,6 +105,13 @@ var instancesCreate = requestflag.WithInnerFlags(cli.Command{
 	Action:          handleInstancesCreate,
 	HideHelpCommand: true,
 }, map[string][]requestflag.HasOuterFlag{
+	"gpu": {
+		&requestflag.InnerFlag[string]{
+			Name:       "gpu.profile",
+			Usage:      `vGPU profile name (e.g., "L40S-1Q"). Only used in vGPU mode.`,
+			InnerField: "profile",
+		},
+	},
 	"network": {
 		&requestflag.InnerFlag[string]{
 			Name:       "network.bandwidth-download",

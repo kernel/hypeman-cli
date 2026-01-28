@@ -8,11 +8,11 @@ import (
 	"mime/multipart"
 	"os"
 
+	"github.com/kernel/hypeman-go/option"
 	"github.com/onkernel/hypeman-cli/internal/apiform"
 	"github.com/onkernel/hypeman-cli/internal/apiquery"
 	"github.com/onkernel/hypeman-cli/internal/debugmiddleware"
 	"github.com/onkernel/hypeman-cli/internal/requestflag"
-	"github.com/onkernel/hypeman-go/option"
 
 	"github.com/goccy/go-yaml"
 	"github.com/urfave/cli/v3"
