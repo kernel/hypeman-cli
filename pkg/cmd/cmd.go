@@ -160,6 +160,25 @@ func init() {
 				},
 			},
 			{
+				Name:     "resources",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&resourcesGet,
+				},
+			},
+			{
+				Name:     "builds",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&buildsCreate,
+					&buildsList,
+					&buildsEvents,
+					&buildsGet,
+				},
+			},
+			{
 				Name:            "@manpages",
 				Usage:           "Generate documentation for 'man'",
 				UsageText:       "hypeman @manpages [-o hypeman.1] [--gzip]",
