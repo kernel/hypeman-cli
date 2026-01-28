@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -12,15 +14,18 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/kernel/hypeman-cli/pkg/jsonview"
+	"github.com/kernel/hypeman-cli/internal/jsonview"
 	"github.com/kernel/hypeman-go/option"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/itchyny/json2yaml"
+	"github.com/muesli/reflow/wrap"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/pretty"
 	"github.com/urfave/cli/v3"
-	"golang.org/x/term"
 )
+
+var OutputFormats = []string{"auto", "explore", "json", "jsonl", "pretty", "raw", "yaml"}
 
 func getDefaultRequestOptions(cmd *cli.Command) []option.RequestOption {
 	opts := []option.RequestOption{
@@ -68,7 +73,7 @@ func isInputPiped() bool {
 func isTerminal(w io.Writer) bool {
 	switch v := w.(type) {
 	case *os.File:
-		return term.IsTerminal(int(v.Fd()))
+		return term.IsTerminal(v.Fd())
 	default:
 		return false
 	}
@@ -80,28 +85,62 @@ func streamOutput(label string, generateOutput func(w *os.File) error) error {
 		return streamToStdout(generateOutput)
 	}
 
-	pagerInput, outputFile, isSocketPair, err := createPagerFiles()
+	// When streaming output on Unix-like systems, there's a special trick involving creating two socket pairs
+	// that we prefer because it supports small buffer sizes which results in less pagination per buffer. The
+	// constructs needed to run it don't exist on Windows builds, so we have this function broken up into
+	// OS-specific files with conditional build comments. Under Windows (and in case our fancy constructs fail
+	// on Unix), we fall back to using pipes (`streamToPagerWithPipe`), which are OS agnostic.
+	//
+	// Defined in either cmdutil_unix.go or cmdutil_windows.go.
+	return streamOutputOSSpecific(label, generateOutput)
+}
+
+func streamToPagerWithPipe(label string, generateOutput func(w *os.File) error) error {
+	r, w, err := os.Pipe()
 	if err != nil {
 		return err
 	}
-	defer pagerInput.Close()
-	defer outputFile.Close()
+	defer r.Close()
+	defer w.Close()
 
-	cmd, err := startPagerCommand(pagerInput, label, isSocketPair)
-	if err != nil {
+	pagerProgram := os.Getenv("PAGER")
+	if pagerProgram == "" {
+		pagerProgram = "less"
+	}
+
+	if _, err := exec.LookPath(pagerProgram); err != nil {
 		return err
 	}
 
-	if err := pagerInput.Close(); err != nil {
+	cmd := exec.Command(pagerProgram)
+	cmd.Stdin = r
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(),
+		"LESS=-X -r -P "+label,
+		"MORE=-r -P "+label,
+	)
+
+	if err := cmd.Start(); err != nil {
 		return err
 	}
 
-	// If the pager exits before reading all input, then generateOutput() will
-	// produce a broken pipe error, which is fine and we don't want to propagate it.
-	if err := generateOutput(outputFile); err != nil && !strings.Contains(err.Error(), "broken pipe") {
+	if err := r.Close(); err != nil {
 		return err
 	}
 
+	// If we would be streaming to a terminal and aren't forcing color one way
+	// or the other, we should configure things to use color so the pager gets
+	// colorized input.
+	if isTerminal(os.Stdout) && os.Getenv("FORCE_COLOR") == "" {
+		os.Setenv("FORCE_COLOR", "1")
+	}
+
+	if err := generateOutput(w); err != nil && !strings.Contains(err.Error(), "broken pipe") {
+		return err
+	}
+
+	w.Close()
 	return cmd.Wait()
 }
 
@@ -135,31 +174,33 @@ func startPagerCommand(pagerInput *os.File, label string, useSocketpair bool) (*
 		pagerProgram = "less"
 	}
 
-	if shouldUseColors(os.Stdout) {
-		os.Setenv("FORCE_COLOR", "1")
+	pagerPath, err := exec.LookPath(pagerProgram)
+	if err != nil {
+		unix.Close(parentFd)
+		return nil, 0, err
 	}
 
-	var cmd *exec.Cmd
-	if useSocketpair {
-		cmd = exec.Command(pagerProgram, fmt.Sprintf("/dev/fd/%d", pagerInput.Fd()))
-		cmd.ExtraFiles = []*os.File{pagerInput}
-	} else {
-		cmd = exec.Command(pagerProgram)
-		cmd.Stdin = pagerInput
+	env := os.Environ()
+	env = append(env, "LESS=-r -P "+label)
+	env = append(env, "MORE=-r -P "+label)
+
+	procAttr := &syscall.ProcAttr{
+		Dir: "",
+		Env: env,
+		Files: []uintptr{
+			uintptr(childFd),        // stdin (fd 0)
+			uintptr(syscall.Stdout), // stdout (fd 1)
+			uintptr(syscall.Stderr), // stderr (fd 2)
+		},
 	}
 
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = append(os.Environ(),
-		"LESS=-r -f -P "+label,
-		"MORE=-r -f -P "+label,
-	)
-
-	if err := cmd.Start(); err != nil {
-		return nil, err
+	pid, err := syscall.ForkExec(pagerPath, []string{pagerProgram}, procAttr)
+	if err != nil {
+		unix.Close(parentFd)
+		return nil, 0, err
 	}
 
-	return cmd, nil
+	return parentConn, pid, nil
 }
 
 func shouldUseColors(w io.Writer) bool {
@@ -175,7 +216,7 @@ func shouldUseColors(w io.Writer) bool {
 	return isTerminal(w)
 }
 
-func ShowJSON(out *os.File, title string, res gjson.Result, format string, transform string) error {
+func formatJSON(expectedOutput *os.File, title string, res gjson.Result, format string, transform string) ([]byte, error) {
 	if format != "raw" && transform != "" {
 		transformed := res.Get(transform)
 		if transformed.Exists() {
@@ -184,46 +225,135 @@ func ShowJSON(out *os.File, title string, res gjson.Result, format string, trans
 	}
 	switch strings.ToLower(format) {
 	case "auto":
-		return ShowJSON(out, title, res, "json", "")
-	case "explore":
-		return jsonview.ExploreJSON(title, res)
+		return formatJSON(expectedOutput, title, res, "json", "")
 	case "pretty":
-		_, err := out.WriteString(jsonview.RenderJSON(title, res) + "\n")
-		return err
+		return []byte(jsonview.RenderJSON(title, res) + "\n"), nil
 	case "json":
 		prettyJSON := pretty.Pretty([]byte(res.Raw))
-		if shouldUseColors(out) {
-			_, err := out.Write(pretty.Color(prettyJSON, pretty.TerminalStyle))
-			return err
+		if shouldUseColors(expectedOutput) {
+			return pretty.Color(prettyJSON, pretty.TerminalStyle), nil
 		} else {
-			_, err := out.Write(prettyJSON)
-			return err
+			return prettyJSON, nil
 		}
 	case "jsonl":
 		// @ugly is gjson syntax for "no whitespace", so it fits on one line
 		oneLineJSON := res.Get("@ugly").Raw
-		if shouldUseColors(out) {
+		if shouldUseColors(expectedOutput) {
 			bytes := append(pretty.Color([]byte(oneLineJSON), pretty.TerminalStyle), '\n')
-			_, err := out.Write(bytes)
-			return err
+			return bytes, nil
 		} else {
-			_, err := out.Write([]byte(oneLineJSON + "\n"))
-			return err
+			return []byte(oneLineJSON + "\n"), nil
 		}
 	case "raw":
-		if _, err := out.Write([]byte(res.Raw + "\n")); err != nil {
-			return err
-		}
-		return nil
+		return []byte(res.Raw + "\n"), nil
 	case "yaml":
 		input := strings.NewReader(res.Raw)
 		var yaml strings.Builder
 		if err := json2yaml.Convert(&yaml, input); err != nil {
+			return nil, err
+		}
+		_, err := expectedOutput.Write([]byte(yaml.String()))
+		return nil, err
+	default:
+		return nil, fmt.Errorf("Invalid format: %s, valid formats are: %s", format, strings.Join(OutputFormats, ", "))
+	}
+}
+
+// Display JSON to the user in various different formats
+func ShowJSON(out *os.File, title string, res gjson.Result, format string, transform string) error {
+	if format != "raw" && transform != "" {
+		transformed := res.Get(transform)
+		if transformed.Exists() {
+			res = transformed
+		}
+	}
+
+	switch strings.ToLower(format) {
+	case "auto":
+		return ShowJSON(out, title, res, "json", "")
+	case "explore":
+		return jsonview.ExploreJSON(title, res)
+	default:
+		bytes, err := formatJSON(out, title, res, format, transform)
+		if err != nil {
 			return err
 		}
-		_, err := out.Write([]byte(yaml.String()))
+
+		_, err = out.Write(bytes)
 		return err
-	default:
-		return fmt.Errorf("Invalid format: %s, valid formats are: %s", format, strings.Join(OutputFormats, ", "))
 	}
+}
+
+// Get the number of lines that would be output by writing the data to the terminal
+func countTerminalLines(data []byte, terminalWidth int) int {
+	return bytes.Count([]byte(wrap.String(string(data), terminalWidth)), []byte("\n"))
+}
+
+// For an iterator over different value types, display its values to the user in
+// different formats.
+func ShowJSONIterator[T any](stdout *os.File, title string, iter jsonview.Iterator[T], format string, transform string) error {
+	if format == "explore" {
+		return jsonview.ExploreJSONStream(title, iter)
+	}
+
+	terminalWidth, terminalHeight, err := term.GetSize(os.Stdout.Fd())
+	if err != nil {
+		return err
+	}
+
+	// Decide whether or not to use a pager based on whether it's a short output or a long output
+	usePager := false
+	output := []byte{}
+	numberOfNewlines := 0
+	for iter.Next() {
+		item := iter.Current()
+		jsonData, err := json.Marshal(item)
+		if err != nil {
+			return err
+		}
+		obj := gjson.ParseBytes(jsonData)
+		json, err := formatJSON(stdout, title, obj, format, transform)
+		if err != nil {
+			return err
+		}
+
+		output = append(output, json...)
+		numberOfNewlines += countTerminalLines(json, terminalWidth)
+
+		// If the output won't fit in the terminal window, stream it to a pager
+		if numberOfNewlines >= terminalHeight-3 {
+			usePager = true
+			break
+		}
+	}
+
+	if !usePager {
+		_, err := stdout.Write(output)
+		if err != nil {
+			return err
+		}
+
+		return iter.Err()
+	}
+
+	return streamOutput(title, func(pager *os.File) error {
+		// Write the output we used during the initial terminal size computation
+		_, err := pager.Write(output)
+		if err != nil {
+			return err
+		}
+
+		for iter.Next() {
+			item := iter.Current()
+			jsonData, err := json.Marshal(item)
+			if err != nil {
+				return err
+			}
+			obj := gjson.ParseBytes(jsonData)
+			if err := ShowJSON(pager, title, obj, format, transform); err != nil {
+				return err
+			}
+		}
+		return iter.Err()
+	})
 }

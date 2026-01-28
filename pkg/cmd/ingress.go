@@ -15,55 +15,66 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var ingressesCreate = cli.Command{
-	Name:  "create",
-	Usage: "Create ingress",
+var ingressesCreate = requestflag.WithInnerFlags(cli.Command{
+	Name:    "create",
+	Usage:   "Create ingress",
+	Suggest: true,
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
-			Name:  "name",
-			Usage: "Human-readable name (lowercase letters, digits, and dashes only; cannot start or end with a dash)",
-			Config: requestflag.RequestConfig{
-				BodyPath: "name",
-			},
+		&requestflag.Flag[string]{
+			Name:     "name",
+			Usage:    "Human-readable name (lowercase letters, digits, and dashes only; cannot start or end with a dash)",
+			Required: true,
+			BodyPath: "name",
 		},
-		&requestflag.YAMLSliceFlag{
-			Name:  "rule",
-			Usage: "Routing rules for this ingress",
-			Config: requestflag.RequestConfig{
-				BodyPath: "rules",
-			},
+		&requestflag.Flag[[]map[string]any]{
+			Name:     "rule",
+			Usage:    "Routing rules for this ingress",
+			Required: true,
+			BodyPath: "rules",
 		},
 	},
 	Action:          handleIngressesCreate,
 	HideHelpCommand: true,
-}
+}, map[string][]requestflag.HasOuterFlag{
+	"rule": {
+		&requestflag.InnerFlag[map[string]any]{
+			Name:       "rule.match",
+			InnerField: "match",
+		},
+		&requestflag.InnerFlag[map[string]any]{
+			Name:       "rule.target",
+			InnerField: "target",
+		},
+		&requestflag.InnerFlag[bool]{
+			Name:       "rule.redirect-http",
+			Usage:      "Auto-create HTTP to HTTPS redirect for this hostname (only applies when tls is enabled)",
+			InnerField: "redirect_http",
+		},
+		&requestflag.InnerFlag[bool]{
+			Name:       "rule.tls",
+			Usage:      "Enable TLS termination (certificate auto-issued via ACME).",
+			InnerField: "tls",
+		},
+	},
+})
 
 var ingressesList = cli.Command{
 	Name:            "list",
 	Usage:           "List ingresses",
+	Suggest:         true,
 	Flags:           []cli.Flag{},
 	Action:          handleIngressesList,
 	HideHelpCommand: true,
 }
 
-var ingressesDelete = cli.Command{
-	Name:  "delete",
-	Usage: "Delete ingress",
-	Flags: []cli.Flag{
-		&requestflag.StringFlag{
-			Name: "id",
-		},
-	},
-	Action:          handleIngressesDelete,
-	HideHelpCommand: true,
-}
-
 var ingressesGet = cli.Command{
-	Name:  "get",
-	Usage: "Get ingress details",
+	Name:    "get",
+	Usage:   "Get ingress details",
+	Suggest: true,
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
-			Name: "id",
+		&requestflag.Flag[string]{
+			Name:     "id",
+			Required: true,
 		},
 	},
 	Action:          handleIngressesGet,
@@ -77,6 +88,7 @@ func handleIngressesCreate(ctx context.Context, cmd *cli.Command) error {
 	if len(unusedArgs) > 0 {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
+
 	params := hypeman.IngressNewParams{}
 
 	options, err := flagOptions(
@@ -84,6 +96,7 @@ func handleIngressesCreate(ctx context.Context, cmd *cli.Command) error {
 		apiquery.NestedQueryFormatBrackets,
 		apiquery.ArrayQueryFormatComma,
 		ApplicationJSON,
+		false,
 	)
 	if err != nil {
 		return err
@@ -109,11 +122,13 @@ func handleIngressesList(ctx context.Context, cmd *cli.Command) error {
 	if len(unusedArgs) > 0 {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
+
 	options, err := flagOptions(
 		cmd,
 		apiquery.NestedQueryFormatBrackets,
 		apiquery.ArrayQueryFormatComma,
-		ApplicationJSON,
+		EmptyBody,
+		false,
 	)
 	if err != nil {
 		return err
@@ -132,29 +147,6 @@ func handleIngressesList(ctx context.Context, cmd *cli.Command) error {
 	return ShowJSON(os.Stdout, "ingresses list", obj, format, transform)
 }
 
-func handleIngressesDelete(ctx context.Context, cmd *cli.Command) error {
-	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
-	unusedArgs := cmd.Args().Slice()
-	if !cmd.IsSet("id") && len(unusedArgs) > 0 {
-		cmd.Set("id", unusedArgs[0])
-		unusedArgs = unusedArgs[1:]
-	}
-	if len(unusedArgs) > 0 {
-		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
-	}
-	options, err := flagOptions(
-		cmd,
-		apiquery.NestedQueryFormatBrackets,
-		apiquery.ArrayQueryFormatComma,
-		ApplicationJSON,
-	)
-	if err != nil {
-		return err
-	}
-
-	return client.Ingresses.Delete(ctx, requestflag.CommandRequestValue[string](cmd, "id"), options...)
-}
-
 func handleIngressesGet(ctx context.Context, cmd *cli.Command) error {
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 	unusedArgs := cmd.Args().Slice()
@@ -165,11 +157,13 @@ func handleIngressesGet(ctx context.Context, cmd *cli.Command) error {
 	if len(unusedArgs) > 0 {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
+
 	options, err := flagOptions(
 		cmd,
 		apiquery.NestedQueryFormatBrackets,
 		apiquery.ArrayQueryFormatComma,
-		ApplicationJSON,
+		EmptyBody,
+		false,
 	)
 	if err != nil {
 		return err
@@ -177,7 +171,7 @@ func handleIngressesGet(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
-	_, err = client.Ingresses.Get(ctx, requestflag.CommandRequestValue[string](cmd, "id"), options...)
+	_, err = client.Ingresses.Get(ctx, cmd.Value("id").(string), options...)
 	if err != nil {
 		return err
 	}

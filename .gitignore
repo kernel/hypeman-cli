@@ -1,6 +1,7 @@
 .prism.log
 dist/
 /hypeman
+*.exe
 .env
 hypeman/**
 bin/hypeman

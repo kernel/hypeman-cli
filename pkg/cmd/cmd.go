@@ -16,14 +16,14 @@ import (
 )
 
 var (
-	Command       *cli.Command
-	OutputFormats = []string{"auto", "explore", "json", "jsonl", "pretty", "raw", "yaml"}
+	Command *cli.Command
 )
 
 func init() {
 	Command = &cli.Command{
 		Name:    "hypeman",
 		Usage:   "CLI for the hypeman API",
+		Suggest: true,
 		Version: Version,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
@@ -86,6 +86,7 @@ func init() {
 		{
 				Name:     "health",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&healthCheck,
 				},
@@ -93,6 +94,7 @@ func init() {
 			{
 				Name:     "images",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&imagesCreate,
 					&imagesList,
@@ -102,21 +104,25 @@ func init() {
 			{
 				Name:     "instances",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&instancesCreate,
 					&instancesList,
 					&instancesGet,
+					&instancesLogs,
 					&instancesRestore,
 					&instancesLogs,
 					&instancesDelete,
 					&instancesStandby,
 					&instancesStart,
+					&instancesStat,
 					&instancesStop,
 				},
 			},
 			{
 				Name:     "instances:volumes",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&instancesVolumesAttach,
 					&instancesVolumesDetach,
@@ -125,6 +131,7 @@ func init() {
 			{
 				Name:     "volumes",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&volumesCreate,
 					&volumesList,
@@ -132,12 +139,43 @@ func init() {
 				},
 			},
 			{
+				Name:     "devices",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&devicesCreate,
+					&devicesRetrieve,
+					&devicesList,
+					&devicesListAvailable,
+				},
+			},
+			{
 				Name:     "ingresses",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&ingressesCreate,
 					&ingressesList,
 					&ingressesGet,
+				},
+			},
+			{
+				Name:     "resources",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&resourcesGet,
+				},
+			},
+			{
+				Name:     "builds",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&buildsCreate,
+					&buildsList,
+					&buildsEvents,
+					&buildsGet,
 				},
 			},
 			{

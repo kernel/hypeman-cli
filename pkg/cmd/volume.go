@@ -16,29 +16,26 @@ import (
 )
 
 var volumesCreate = cli.Command{
-	Name:  "create",
-	Usage: "Creates a new volume. Supports two modes:",
+	Name:    "create",
+	Usage:   "Creates a new volume. Supports two modes:",
+	Suggest: true,
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
-			Name:  "name",
-			Usage: "Volume name",
-			Config: requestflag.RequestConfig{
-				BodyPath: "name",
-			},
+		&requestflag.Flag[string]{
+			Name:     "name",
+			Usage:    "Volume name",
+			Required: true,
+			BodyPath: "name",
 		},
-		&requestflag.IntFlag{
-			Name:  "size-gb",
-			Usage: "Size in gigabytes",
-			Config: requestflag.RequestConfig{
-				BodyPath: "size_gb",
-			},
+		&requestflag.Flag[int64]{
+			Name:     "size-gb",
+			Usage:    "Size in gigabytes",
+			Required: true,
+			BodyPath: "size_gb",
 		},
-		&requestflag.StringFlag{
-			Name:  "id",
-			Usage: "Optional custom identifier (auto-generated if not provided)",
-			Config: requestflag.RequestConfig{
-				BodyPath: "id",
-			},
+		&requestflag.Flag[string]{
+			Name:     "id",
+			Usage:    "Optional custom identifier (auto-generated if not provided)",
+			BodyPath: "id",
 		},
 	},
 	Action:          handleVolumesCreate,
@@ -48,29 +45,20 @@ var volumesCreate = cli.Command{
 var volumesList = cli.Command{
 	Name:            "list",
 	Usage:           "List volumes",
+	Suggest:         true,
 	Flags:           []cli.Flag{},
 	Action:          handleVolumesList,
 	HideHelpCommand: true,
 }
 
-var volumesDelete = cli.Command{
-	Name:  "delete",
-	Usage: "Delete volume",
-	Flags: []cli.Flag{
-		&requestflag.StringFlag{
-			Name: "id",
-		},
-	},
-	Action:          handleVolumesDelete,
-	HideHelpCommand: true,
-}
-
 var volumesGet = cli.Command{
-	Name:  "get",
-	Usage: "Get volume details",
+	Name:    "get",
+	Usage:   "Get volume details",
+	Suggest: true,
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
-			Name: "id",
+		&requestflag.Flag[string]{
+			Name:     "id",
+			Required: true,
 		},
 	},
 	Action:          handleVolumesGet,
@@ -84,6 +72,7 @@ func handleVolumesCreate(ctx context.Context, cmd *cli.Command) error {
 	if len(unusedArgs) > 0 {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
+
 	params := hypeman.VolumeNewParams{}
 
 	options, err := flagOptions(
@@ -91,6 +80,7 @@ func handleVolumesCreate(ctx context.Context, cmd *cli.Command) error {
 		apiquery.NestedQueryFormatBrackets,
 		apiquery.ArrayQueryFormatComma,
 		ApplicationJSON,
+		false,
 	)
 	if err != nil {
 		return err
@@ -116,11 +106,13 @@ func handleVolumesList(ctx context.Context, cmd *cli.Command) error {
 	if len(unusedArgs) > 0 {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
+
 	options, err := flagOptions(
 		cmd,
 		apiquery.NestedQueryFormatBrackets,
 		apiquery.ArrayQueryFormatComma,
-		ApplicationJSON,
+		EmptyBody,
+		false,
 	)
 	if err != nil {
 		return err
@@ -139,29 +131,6 @@ func handleVolumesList(ctx context.Context, cmd *cli.Command) error {
 	return ShowJSON(os.Stdout, "volumes list", obj, format, transform)
 }
 
-func handleVolumesDelete(ctx context.Context, cmd *cli.Command) error {
-	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
-	unusedArgs := cmd.Args().Slice()
-	if !cmd.IsSet("id") && len(unusedArgs) > 0 {
-		cmd.Set("id", unusedArgs[0])
-		unusedArgs = unusedArgs[1:]
-	}
-	if len(unusedArgs) > 0 {
-		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
-	}
-	options, err := flagOptions(
-		cmd,
-		apiquery.NestedQueryFormatBrackets,
-		apiquery.ArrayQueryFormatComma,
-		ApplicationJSON,
-	)
-	if err != nil {
-		return err
-	}
-
-	return client.Volumes.Delete(ctx, requestflag.CommandRequestValue[string](cmd, "id"), options...)
-}
-
 func handleVolumesGet(ctx context.Context, cmd *cli.Command) error {
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 	unusedArgs := cmd.Args().Slice()
@@ -172,11 +141,13 @@ func handleVolumesGet(ctx context.Context, cmd *cli.Command) error {
 	if len(unusedArgs) > 0 {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
+
 	options, err := flagOptions(
 		cmd,
 		apiquery.NestedQueryFormatBrackets,
 		apiquery.ArrayQueryFormatComma,
-		ApplicationJSON,
+		EmptyBody,
+		false,
 	)
 	if err != nil {
 		return err
@@ -184,7 +155,7 @@ func handleVolumesGet(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
-	_, err = client.Volumes.Get(ctx, requestflag.CommandRequestValue[string](cmd, "id"), options...)
+	_, err = client.Volumes.Get(ctx, cmd.Value("id").(string), options...)
 	if err != nil {
 		return err
 	}

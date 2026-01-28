@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/kernel/hypeman-cli/internal/apiquery"
+	"github.com/kernel/hypeman-cli/internal/requestflag"
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
 	"github.com/urfave/cli/v3"

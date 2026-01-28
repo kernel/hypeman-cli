@@ -14,16 +14,16 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var healthCheck = cli.Command{
-	Name:            "check",
-	Usage:           "Health check",
+var resourcesGet = cli.Command{
+	Name:            "get",
+	Usage:           "Returns current host resource capacity, allocation status, and per-instance\nbreakdown. Resources include CPU, memory, disk, and network. Oversubscription\nratios are applied to calculate effective limits.",
 	Suggest:         true,
 	Flags:           []cli.Flag{},
-	Action:          handleHealthCheck,
+	Action:          handleResourcesGet,
 	HideHelpCommand: true,
 }
 
-func handleHealthCheck(ctx context.Context, cmd *cli.Command) error {
+func handleResourcesGet(ctx context.Context, cmd *cli.Command) error {
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 	unusedArgs := cmd.Args().Slice()
 
@@ -44,7 +44,7 @@ func handleHealthCheck(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
-	_, err = client.Health.Check(ctx, options...)
+	_, err = client.Resources.Get(ctx, options...)
 	if err != nil {
 		return err
 	}
@@ -52,5 +52,5 @@ func handleHealthCheck(ctx context.Context, cmd *cli.Command) error {
 	obj := gjson.ParseBytes(res)
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
-	return ShowJSON(os.Stdout, "health check", obj, format, transform)
+	return ShowJSON(os.Stdout, "resources get", obj, format, transform)
 }

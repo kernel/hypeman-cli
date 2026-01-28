@@ -5,7 +5,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 
 	"github.com/kernel/hypeman-cli/internal/apiquery"
@@ -16,46 +15,60 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var imagesCreate = cli.Command{
+var devicesCreate = cli.Command{
 	Name:    "create",
-	Usage:   "Pull and convert OCI image",
+	Usage:   "Register a device for passthrough",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name:     "name",
-			Usage:    "OCI image reference (e.g., docker.io/library/nginx:latest)",
+			Name:     "pci-address",
+			Usage:    `PCI address of the device (required, e.g., "0000:a2:00.0")`,
 			Required: true,
+			BodyPath: "pci_address",
+		},
+		&requestflag.Flag[string]{
+			Name:     "name",
+			Usage:    `Optional globally unique device name. If not provided, a name is auto-generated from the PCI address (e.g., "pci-0000-a2-00-0")`,
 			BodyPath: "name",
 		},
 	},
-	Action:          handleImagesCreate,
+	Action:          handleDevicesCreate,
 	HideHelpCommand: true,
 }
 
-var imagesList = cli.Command{
-	Name:            "list",
-	Usage:           "List images",
-	Suggest:         true,
-	Flags:           []cli.Flag{},
-	Action:          handleImagesList,
-	HideHelpCommand: true,
-}
-
-var imagesGet = cli.Command{
-	Name:    "get",
-	Usage:   "Get image details",
+var devicesRetrieve = cli.Command{
+	Name:    "retrieve",
+	Usage:   "Get device details",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
-			Name:     "name",
+			Name:     "id",
 			Required: true,
 		},
 	},
-	Action:          handleImagesGet,
+	Action:          handleDevicesRetrieve,
 	HideHelpCommand: true,
 }
 
-func handleImagesCreate(ctx context.Context, cmd *cli.Command) error {
+var devicesList = cli.Command{
+	Name:            "list",
+	Usage:           "List registered devices",
+	Suggest:         true,
+	Flags:           []cli.Flag{},
+	Action:          handleDevicesList,
+	HideHelpCommand: true,
+}
+
+var devicesListAvailable = cli.Command{
+	Name:            "list-available",
+	Usage:           "Discover passthrough-capable devices on host",
+	Suggest:         true,
+	Flags:           []cli.Flag{},
+	Action:          handleDevicesListAvailable,
+	HideHelpCommand: true,
+}
+
+func handleDevicesCreate(ctx context.Context, cmd *cli.Command) error {
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 	unusedArgs := cmd.Args().Slice()
 
@@ -63,7 +76,7 @@ func handleImagesCreate(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
 
-	params := hypeman.ImageNewParams{}
+	params := hypeman.DeviceNewParams{}
 
 	options, err := flagOptions(
 		cmd,
@@ -78,7 +91,7 @@ func handleImagesCreate(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
-	_, err = client.Images.New(ctx, params, options...)
+	_, err = client.Devices.New(ctx, params, options...)
 	if err != nil {
 		return err
 	}
@@ -86,10 +99,45 @@ func handleImagesCreate(ctx context.Context, cmd *cli.Command) error {
 	obj := gjson.ParseBytes(res)
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
-	return ShowJSON(os.Stdout, "images create", obj, format, transform)
+	return ShowJSON(os.Stdout, "devices create", obj, format, transform)
 }
 
-func handleImagesList(ctx context.Context, cmd *cli.Command) error {
+func handleDevicesRetrieve(ctx context.Context, cmd *cli.Command) error {
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	unusedArgs := cmd.Args().Slice()
+	if !cmd.IsSet("id") && len(unusedArgs) > 0 {
+		cmd.Set("id", unusedArgs[0])
+		unusedArgs = unusedArgs[1:]
+	}
+	if len(unusedArgs) > 0 {
+		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
+	}
+
+	options, err := flagOptions(
+		cmd,
+		apiquery.NestedQueryFormatBrackets,
+		apiquery.ArrayQueryFormatComma,
+		EmptyBody,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	var res []byte
+	options = append(options, option.WithResponseBodyInto(&res))
+	_, err = client.Devices.Get(ctx, cmd.Value("id").(string), options...)
+	if err != nil {
+		return err
+	}
+
+	obj := gjson.ParseBytes(res)
+	format := cmd.Root().String("format")
+	transform := cmd.Root().String("transform")
+	return ShowJSON(os.Stdout, "devices retrieve", obj, format, transform)
+}
+
+func handleDevicesList(ctx context.Context, cmd *cli.Command) error {
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 	unusedArgs := cmd.Args().Slice()
 
@@ -110,7 +158,7 @@ func handleImagesList(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
-	_, err = client.Images.List(ctx, options...)
+	_, err = client.Devices.List(ctx, options...)
 	if err != nil {
 		return err
 	}
@@ -118,43 +166,13 @@ func handleImagesList(ctx context.Context, cmd *cli.Command) error {
 	obj := gjson.ParseBytes(res)
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
-	return ShowJSON(os.Stdout, "images list", obj, format, transform)
+	return ShowJSON(os.Stdout, "devices list", obj, format, transform)
 }
 
-func handleImagesDelete(ctx context.Context, cmd *cli.Command) error {
+func handleDevicesListAvailable(ctx context.Context, cmd *cli.Command) error {
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 	unusedArgs := cmd.Args().Slice()
-	if !cmd.IsSet("name") && len(unusedArgs) > 0 {
-		cmd.Set("name", unusedArgs[0])
-		unusedArgs = unusedArgs[1:]
-	}
-	if len(unusedArgs) > 0 {
-		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
-	}
 
-	options, err := flagOptions(
-		cmd,
-		apiquery.NestedQueryFormatBrackets,
-		apiquery.ArrayQueryFormatComma,
-		EmptyBody,
-		false,
-	)
-	if err != nil {
-		return err
-	}
-
-	// URL-encode the name to handle slashes in image references (e.g., docker.io/library/nginx:latest)
-	name := url.PathEscape(requestflag.CommandRequestValue[string](cmd, "name"))
-	return client.Images.Delete(ctx, name, options...)
-}
-
-func handleImagesGet(ctx context.Context, cmd *cli.Command) error {
-	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
-	unusedArgs := cmd.Args().Slice()
-	if !cmd.IsSet("name") && len(unusedArgs) > 0 {
-		cmd.Set("name", unusedArgs[0])
-		unusedArgs = unusedArgs[1:]
-	}
 	if len(unusedArgs) > 0 {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
@@ -172,9 +190,7 @@ func handleImagesGet(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
-	// URL-encode the name to handle slashes in image references (e.g., docker.io/library/nginx:latest)
-	name := url.PathEscape(requestflag.CommandRequestValue[string](cmd, "name"))
-	_, err = client.Images.Get(ctx, name, options...)
+	_, err = client.Devices.ListAvailable(ctx, options...)
 	if err != nil {
 		return err
 	}
@@ -182,5 +198,5 @@ func handleImagesGet(ctx context.Context, cmd *cli.Command) error {
 	obj := gjson.ParseBytes(res)
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
-	return ShowJSON(os.Stdout, "images get", obj, format, transform)
+	return ShowJSON(os.Stdout, "devices list-available", obj, format, transform)
 }
