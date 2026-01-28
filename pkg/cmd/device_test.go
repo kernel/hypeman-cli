@@ -35,15 +35,6 @@ func TestDevicesList(t *testing.T) {
 	)
 }
 
-func TestDevicesDelete(t *testing.T) {
-	t.Skip("Prism tests are disabled")
-	mocktest.TestRunMockTestWithFlags(
-		t,
-		"devices", "delete",
-		"--id", "id",
-	)
-}
-
 func TestDevicesListAvailable(t *testing.T) {
 	t.Skip("Prism tests are disabled")
 	mocktest.TestRunMockTestWithFlags(

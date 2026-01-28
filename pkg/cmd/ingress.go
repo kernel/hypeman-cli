@@ -65,19 +65,6 @@ var ingressesList = cli.Command{
 	HideHelpCommand: true,
 }
 
-var ingressesDelete = cli.Command{
-	Name:  "delete",
-	Usage: "Delete ingress",
-	Flags: []cli.Flag{
-		&requestflag.Flag[string]{
-			Name:     "id",
-			Required: true,
-		},
-	},
-	Action:          handleIngressesDelete,
-	HideHelpCommand: true,
-}
-
 var ingressesGet = cli.Command{
 	Name:  "get",
 	Usage: "Get ingress details",
@@ -155,31 +142,6 @@ func handleIngressesList(ctx context.Context, cmd *cli.Command) error {
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
 	return ShowJSON(os.Stdout, "ingresses list", obj, format, transform)
-}
-
-func handleIngressesDelete(ctx context.Context, cmd *cli.Command) error {
-	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
-	unusedArgs := cmd.Args().Slice()
-	if !cmd.IsSet("id") && len(unusedArgs) > 0 {
-		cmd.Set("id", unusedArgs[0])
-		unusedArgs = unusedArgs[1:]
-	}
-	if len(unusedArgs) > 0 {
-		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
-	}
-
-	options, err := flagOptions(
-		cmd,
-		apiquery.NestedQueryFormatBrackets,
-		apiquery.ArrayQueryFormatComma,
-		EmptyBody,
-		false,
-	)
-	if err != nil {
-		return err
-	}
-
-	return client.Ingresses.Delete(ctx, cmd.Value("id").(string), options...)
 }
 
 func handleIngressesGet(ctx context.Context, cmd *cli.Command) error {

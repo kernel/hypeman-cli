@@ -39,19 +39,6 @@ var imagesList = cli.Command{
 	HideHelpCommand: true,
 }
 
-var imagesDelete = cli.Command{
-	Name:  "delete",
-	Usage: "Delete image",
-	Flags: []cli.Flag{
-		&requestflag.Flag[string]{
-			Name:     "name",
-			Required: true,
-		},
-	},
-	Action:          handleImagesDelete,
-	HideHelpCommand: true,
-}
-
 var imagesGet = cli.Command{
 	Name:  "get",
 	Usage: "Get image details",
