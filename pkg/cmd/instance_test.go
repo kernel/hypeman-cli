@@ -18,6 +18,7 @@ func TestInstancesCreate(t *testing.T) {
 		"--device", "l4-gpu",
 		"--env", "{PORT: '3000', NODE_ENV: production}",
 		"--hotplug-size", "2GB",
+		"--hypervisor", "cloud-hypervisor",
 		"--network", "{enabled: true}",
 		"--overlay-size", "20GB",
 		"--size", "2GB",

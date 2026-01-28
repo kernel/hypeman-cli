@@ -46,6 +46,11 @@ var instancesCreate = cli.Command{
 			Default:  "3GB",
 			BodyPath: "hotplug_size",
 		},
+		&requestflag.Flag[string]{
+			Name:     "hypervisor",
+			Usage:    "Hypervisor to use for this instance. Defaults to server configuration.",
+			BodyPath: "hypervisor",
+		},
 		&requestflag.Flag[map[string]bool]{
 			Name:     "network",
 			Usage:    "Network configuration for the instance",
