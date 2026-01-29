@@ -28,7 +28,7 @@ func TestIngressesCreate(t *testing.T) {
 		"--name", "my-api-ingress",
 		"--rule.match", "{hostname: '{instance}.example.com', port: 8080}",
 		"--rule.target", "{instance: '{instance}', port: 8080}",
-		"--rule.redirect_http=true",
+		"--rule.redirect-http=true",
 		"--rule.tls=true",
 	)
 }
