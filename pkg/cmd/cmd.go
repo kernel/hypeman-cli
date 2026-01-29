@@ -99,6 +99,7 @@ func init() {
 				Commands: []*cli.Command{
 					&imagesCreate,
 					&imagesList,
+					&imagesDelete,
 					&imagesGet,
 				},
 			},
@@ -109,6 +110,7 @@ func init() {
 				Commands: []*cli.Command{
 					&instancesCreate,
 					&instancesList,
+					&instancesDelete,
 					&instancesGet,
 					&instancesLogs,
 					&instancesRestore,
@@ -136,6 +138,7 @@ func init() {
 				Commands: []*cli.Command{
 					&volumesCreate,
 					&volumesList,
+					&volumesDelete,
 					&volumesGet,
 				},
 			},
@@ -147,6 +150,7 @@ func init() {
 					&devicesCreate,
 					&devicesRetrieve,
 					&devicesList,
+					&devicesDelete,
 					&devicesListAvailable,
 				},
 			},
@@ -157,6 +161,7 @@ func init() {
 				Commands: []*cli.Command{
 					&ingressesCreate,
 					&ingressesList,
+					&ingressesDelete,
 					&ingressesGet,
 				},
 			},
@@ -175,6 +180,7 @@ func init() {
 				Commands: []*cli.Command{
 					&buildsCreate,
 					&buildsList,
+					&buildsCancel,
 					&buildsEvents,
 					&buildsGet,
 				},

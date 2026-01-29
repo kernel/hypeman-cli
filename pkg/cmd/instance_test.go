@@ -70,6 +70,15 @@ func TestInstancesList(t *testing.T) {
 	)
 }
 
+func TestInstancesDelete(t *testing.T) {
+	t.Skip("Prism tests are disabled")
+	mocktest.TestRunMockTestWithFlags(
+		t,
+		"instances", "delete",
+		"--id", "id",
+	)
+}
+
 func TestInstancesGet(t *testing.T) {
 	t.Skip("Prism tests are disabled")
 	mocktest.TestRunMockTestWithFlags(
