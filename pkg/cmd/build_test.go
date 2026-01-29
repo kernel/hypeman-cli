@@ -32,6 +32,15 @@ func TestBuildsList(t *testing.T) {
 	)
 }
 
+func TestBuildsCancel(t *testing.T) {
+	t.Skip("Prism tests are disabled")
+	mocktest.TestRunMockTestWithFlags(
+		t,
+		"builds", "cancel",
+		"--id", "id",
+	)
+}
+
 func TestBuildsEvents(t *testing.T) {
 	t.Skip("Prism doesn't support text/event-stream responses")
 	mocktest.TestRunMockTestWithFlags(

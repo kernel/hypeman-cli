@@ -41,6 +41,15 @@ func TestIngressesList(t *testing.T) {
 	)
 }
 
+func TestIngressesDelete(t *testing.T) {
+	t.Skip("Prism tests are disabled")
+	mocktest.TestRunMockTestWithFlags(
+		t,
+		"ingresses", "delete",
+		"--id", "id",
+	)
+}
+
 func TestIngressesGet(t *testing.T) {
 	t.Skip("Prism tests are disabled")
 	mocktest.TestRunMockTestWithFlags(

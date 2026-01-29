@@ -40,6 +40,20 @@ var imagesList = cli.Command{
 	HideHelpCommand: true,
 }
 
+var imagesDelete = cli.Command{
+	Name:    "delete",
+	Usage:   "Delete image",
+	Suggest: true,
+	Flags: []cli.Flag{
+		&requestflag.Flag[string]{
+			Name:     "name",
+			Required: true,
+		},
+	},
+	Action:          handleImagesDelete,
+	HideHelpCommand: true,
+}
+
 var imagesGet = cli.Command{
 	Name:    "get",
 	Usage:   "Get image details",
@@ -118,6 +132,31 @@ func handleImagesList(ctx context.Context, cmd *cli.Command) error {
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
 	return ShowJSON(os.Stdout, "images list", obj, format, transform)
+}
+
+func handleImagesDelete(ctx context.Context, cmd *cli.Command) error {
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	unusedArgs := cmd.Args().Slice()
+	if !cmd.IsSet("name") && len(unusedArgs) > 0 {
+		cmd.Set("name", unusedArgs[0])
+		unusedArgs = unusedArgs[1:]
+	}
+	if len(unusedArgs) > 0 {
+		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
+	}
+
+	options, err := flagOptions(
+		cmd,
+		apiquery.NestedQueryFormatBrackets,
+		apiquery.ArrayQueryFormatComma,
+		EmptyBody,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	return client.Images.Delete(ctx, cmd.Value("name").(string), options...)
 }
 
 func handleImagesGet(ctx context.Context, cmd *cli.Command) error {

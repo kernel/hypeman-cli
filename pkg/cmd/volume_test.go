@@ -27,6 +27,15 @@ func TestVolumesList(t *testing.T) {
 	)
 }
 
+func TestVolumesDelete(t *testing.T) {
+	t.Skip("Prism tests are disabled")
+	mocktest.TestRunMockTestWithFlags(
+		t,
+		"volumes", "delete",
+		"--id", "id",
+	)
+}
+
 func TestVolumesGet(t *testing.T) {
 	t.Skip("Prism tests are disabled")
 	mocktest.TestRunMockTestWithFlags(
