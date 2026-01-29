@@ -87,6 +87,7 @@ var buildsEvents = cli.Command{
 		&requestflag.Flag[bool]{
 			Name:      "follow",
 			Usage:     "Continue streaming new events after initial output",
+			Default:   false,
 			QueryPath: "follow",
 		},
 	},

@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.1
 	github.com/goccy/go-yaml v1.18.0
 	github.com/itchyny/json2yaml v0.1.4
-	github.com/kernel/hypeman-go v0.0.0
+	github.com/kernel/hypeman-go v0.9.4
 	github.com/muesli/reflow v0.3.0
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0
@@ -44,5 +44,3 @@ require (
 	golang.org/x/text v0.3.8 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/kernel/hypeman-go => github.com/stainless-sdks/hypeman-go v0.0.0-20260123215912-95284c78255d
