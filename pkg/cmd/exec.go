@@ -30,11 +30,12 @@ func (e *ExecExitError) Error() string {
 
 // execRequest represents the JSON body for exec requests
 type execRequest struct {
-	Command []string          `json:"command"`
-	TTY     bool              `json:"tty"`
-	Env     map[string]string `json:"env,omitempty"`
-	Cwd     string            `json:"cwd,omitempty"`
-	Timeout int32             `json:"timeout,omitempty"`
+	Command      []string          `json:"command"`
+	TTY          bool              `json:"tty"`
+	Env          map[string]string `json:"env,omitempty"`
+	Cwd          string            `json:"cwd,omitempty"`
+	Timeout      int32             `json:"timeout,omitempty"`
+	WaitForAgent int32             `json:"wait_for_agent"`
 }
 
 var execCmd = cli.Command{
@@ -64,6 +65,11 @@ var execCmd = cli.Command{
 		&cli.IntFlag{
 			Name:  "timeout",
 			Usage: "Execution timeout in seconds (0 = no timeout)",
+		},
+		&cli.IntFlag{
+			Name:  "wait-for-agent",
+			Usage: "Seconds to wait for guest agent to be ready (0 = fail immediately)",
+			Value: 30, // Default: wait up to 30 seconds for agent
 		},
 	},
 	Action:          handleExec,
@@ -126,6 +132,7 @@ func handleExec(ctx context.Context, cmd *cli.Command) error {
 	if timeout := cmd.Int("timeout"); timeout > 0 {
 		execReq.Timeout = int32(timeout)
 	}
+	execReq.WaitForAgent = int32(cmd.Int("wait-for-agent"))
 
 	reqBody, err := json.Marshal(execReq)
 	if err != nil {
