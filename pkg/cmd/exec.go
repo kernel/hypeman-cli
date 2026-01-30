@@ -11,7 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"syscall"
+	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/kernel/hypeman-go"
@@ -35,6 +35,8 @@ type execRequest struct {
 	Env     map[string]string `json:"env,omitempty"`
 	Cwd     string            `json:"cwd,omitempty"`
 	Timeout int32             `json:"timeout,omitempty"`
+	Rows    uint32            `json:"rows,omitempty"`
+	Cols    uint32            `json:"cols,omitempty"`
 }
 
 var execCmd = cli.Command{
@@ -127,6 +129,17 @@ func handleExec(ctx context.Context, cmd *cli.Command) error {
 		execReq.Timeout = int32(timeout)
 	}
 
+	// Get terminal size for TTY mode (only if stdout is actually a terminal)
+	if tty && term.IsTerminal(int(os.Stdout.Fd())) {
+		cols, rows, _ := term.GetSize(int(os.Stdout.Fd()))
+		if rows > 0 {
+			execReq.Rows = uint32(rows)
+		}
+		if cols > 0 {
+			execReq.Cols = uint32(cols)
+		}
+	}
+
 	reqBody, err := json.Marshal(execReq)
 	if err != nil {
 		return fmt.Errorf("failed to marshal request: %w", err)
@@ -208,10 +221,17 @@ func runExecInteractive(ws *websocket.Conn) (int, error) {
 	}
 	defer term.Restore(int(os.Stdin.Fd()), oldState)
 
-	// Handle signals gracefully
+	// Handle signals gracefully (os.Interrupt is cross-platform)
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigCh, os.Interrupt)
 	defer signal.Stop(sigCh)
+
+	// Mutex to protect WebSocket writes from concurrent access
+	var wsMu sync.Mutex
+
+	// Handle terminal resize events (Unix only, no-op on Windows)
+	cleanupResize := setupResizeHandler(ws, &wsMu)
+	defer cleanupResize()
 
 	errCh := make(chan error, 2)
 	exitCodeCh := make(chan int, 1)
@@ -228,7 +248,10 @@ func runExecInteractive(ws *websocket.Conn) (int, error) {
 				return
 			}
 			if n > 0 {
-				if err := ws.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
+				wsMu.Lock()
+				err := ws.WriteMessage(websocket.BinaryMessage, buf[:n])
+				wsMu.Unlock()
+				if err != nil {
 					errCh <- fmt.Errorf("websocket write error: %w", err)
 					return
 				}
@@ -342,4 +365,3 @@ func runExecNonInteractive(ws *websocket.Conn) (int, error) {
 		return 0, nil
 	}
 }
-

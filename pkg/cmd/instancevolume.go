@@ -37,6 +37,7 @@ var instancesVolumesAttach = cli.Command{
 		&requestflag.Flag[bool]{
 			Name:     "readonly",
 			Usage:    "Mount as read-only",
+			Default:  false,
 			BodyPath: "readonly",
 		},
 	},

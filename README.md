@@ -2,6 +2,8 @@
 
 The official CLI for [Hypeman](https://github.com/kernel/hypeman/).
 
+<!-- x-release-please-start-version -->
+
 ## Installation
 
 ### Installing with Homebrew
@@ -12,21 +14,17 @@ brew install kernel/tap/hypeman
 
 ### Installing with Go
 
-<!-- x-release-please-start-version -->
-
 ```sh
 go install 'github.com/kernel/hypeman-cli/cmd/hypeman@latest'
 ```
 
+<!-- x-release-please-end -->
+
 ### Running Locally
 
-<!-- x-release-please-start-version -->
-
 ```sh
-go run cmd/hypeman/main.go
+./scripts/run args...
 ```
-
-<!-- x-release-please-end -->
 
 ## Usage
 
@@ -265,9 +263,15 @@ hypeman [resource] [command] [flags]
 
 ## Global Flags
 
+- `--help` - Show command line usage
 - `--debug` - Enable debug logging (includes HTTP request/response details)
 - `--version`, `-v` - Show the CLI version
 
+- `--base-url` - Use a custom API backend URL
+- `--format` - Change the output format (`auto`, `explore`, `json`, `jsonl`, `pretty`, `raw`, `yaml`)
+- `--format-error` - Change the output format for errors (`auto`, `explore`, `json`, `jsonl`, `pretty`, `raw`, `yaml`)
+- `--transform` - Transform the data output using [GJSON syntax](https://github.com/tidwall/gjson/blob/master/SYNTAX.md)
+- `--transform-error` - Transform the error output using [GJSON syntax](https://github.com/tidwall/gjson/blob/master/SYNTAX.md)
 ## Development
 
 ### Testing Preview Branches

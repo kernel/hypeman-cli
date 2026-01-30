@@ -83,11 +83,13 @@ var instancesCreate = requestflag.WithInnerFlags(cli.Command{
 		&requestflag.Flag[bool]{
 			Name:     "skip-guest-agent",
 			Usage:    "Skip guest-agent installation during boot.\nWhen true, the exec and stat APIs will not work for this instance.\nThe instance will still run, but remote command execution will be unavailable.\n",
+			Default:  false,
 			BodyPath: "skip_guest_agent",
 		},
 		&requestflag.Flag[bool]{
 			Name:     "skip-kernel-headers",
 			Usage:    "Skip kernel headers installation during boot for faster startup.\nWhen true, DKMS (Dynamic Kernel Module Support) will not work,\npreventing compilation of out-of-tree kernel modules (e.g., NVIDIA vGPU drivers).\nRecommended for workloads that don't need kernel module compilation.\n",
+			Default:  false,
 			BodyPath: "skip_kernel_headers",
 		},
 		&requestflag.Flag[int64]{
@@ -193,6 +195,7 @@ var instancesLogs = cli.Command{
 		&requestflag.Flag[bool]{
 			Name:      "follow",
 			Usage:     "Continue streaming new lines after initial output",
+			Default:   false,
 			QueryPath: "follow",
 		},
 		&requestflag.Flag[string]{
@@ -272,6 +275,7 @@ var instancesStat = cli.Command{
 		&requestflag.Flag[bool]{
 			Name:      "follow-links",
 			Usage:     "Follow symbolic links (like stat vs lstat)",
+			Default:   false,
 			QueryPath: "follow_links",
 		},
 	},
