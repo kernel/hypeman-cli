@@ -36,6 +36,18 @@ func TestVolumesDelete(t *testing.T) {
 	)
 }
 
+func TestVolumesCreateFromArchive(t *testing.T) {
+	t.Skip("Prism tests are disabled")
+	mocktest.TestRunMockTestWithFlags(
+		t,
+		"volumes", "create-from-archive",
+		"--name", "name",
+		"--size-gb", "0",
+		"--body", mocktest.TestFile(t, ""),
+		"--id", "id",
+	)
+}
+
 func TestVolumesGet(t *testing.T) {
 	t.Skip("Prism tests are disabled")
 	mocktest.TestRunMockTestWithFlags(

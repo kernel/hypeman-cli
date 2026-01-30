@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/kernel/hypeman-cli/internal/apiquery"
+	"github.com/kernel/hypeman-cli/internal/binaryparam"
 	"github.com/kernel/hypeman-cli/internal/requestflag"
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
@@ -17,7 +18,7 @@ import (
 
 var volumesCreate = cli.Command{
 	Name:    "create",
-	Usage:   "Creates a new volume. Supports two modes:",
+	Usage:   "Creates a new empty volume of the specified size.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
@@ -62,6 +63,38 @@ var volumesDelete = cli.Command{
 		},
 	},
 	Action:          handleVolumesDelete,
+	HideHelpCommand: true,
+}
+
+var volumesCreateFromArchive = cli.Command{
+	Name:    "create-from-archive",
+	Usage:   "Creates a new volume pre-populated with content from a tar.gz archive. The\narchive is streamed directly into the volume's root directory.",
+	Suggest: true,
+	Flags: []cli.Flag{
+		&requestflag.Flag[string]{
+			Name:      "name",
+			Usage:     "Volume name",
+			Required:  true,
+			QueryPath: "name",
+		},
+		&requestflag.Flag[int64]{
+			Name:      "size-gb",
+			Usage:     "Maximum size in GB (extraction fails if content exceeds this)",
+			Required:  true,
+			QueryPath: "size_gb",
+		},
+		&requestflag.Flag[string]{
+			Name:     "body",
+			Required: true,
+			BodyRoot: true,
+		},
+		&requestflag.Flag[string]{
+			Name:      "id",
+			Usage:     "Optional custom volume ID (auto-generated if not provided)",
+			QueryPath: "id",
+		},
+	},
+	Action:          handleVolumesCreateFromArchive,
 	HideHelpCommand: true,
 }
 
@@ -168,6 +201,54 @@ func handleVolumesDelete(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return client.Volumes.Delete(ctx, cmd.Value("id").(string), options...)
+}
+
+func handleVolumesCreateFromArchive(ctx context.Context, cmd *cli.Command) error {
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	unusedArgs := cmd.Args().Slice()
+	if !cmd.IsSet("body") && len(unusedArgs) > 0 {
+		cmd.Set("body", unusedArgs[0])
+		unusedArgs = unusedArgs[1:]
+	}
+	if len(unusedArgs) > 0 {
+		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
+	}
+
+	bodyReader, stdinInUse, err := binaryparam.FileOrStdin(os.Stdin, cmd.Value("body").(string))
+	if err != nil {
+		return fmt.Errorf("Failed on param '%s': %w", "body", err)
+	}
+	defer bodyReader.Close()
+
+	params := hypeman.VolumeNewFromArchiveParams{}
+
+	options, err := flagOptions(
+		cmd,
+		apiquery.NestedQueryFormatBrackets,
+		apiquery.ArrayQueryFormatComma,
+		ApplicationOctetStream,
+		stdinInUse,
+	)
+	if err != nil {
+		return err
+	}
+
+	var res []byte
+	options = append(options, option.WithResponseBodyInto(&res))
+	_, err = client.Volumes.NewFromArchive(
+		ctx,
+		bodyReader,
+		params,
+		options...,
+	)
+	if err != nil {
+		return err
+	}
+
+	obj := gjson.ParseBytes(res)
+	format := cmd.Root().String("format")
+	transform := cmd.Root().String("transform")
+	return ShowJSON(os.Stdout, "volumes create-from-archive", obj, format, transform)
 }
 
 func handleVolumesGet(ctx context.Context, cmd *cli.Command) error {

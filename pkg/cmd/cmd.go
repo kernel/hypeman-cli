@@ -121,6 +121,7 @@ func init() {
 					&volumesCreate,
 					&volumesList,
 					&volumesDelete,
+					&volumesCreateFromArchive,
 					&volumesGet,
 				},
 			},
