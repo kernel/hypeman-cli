@@ -15,45 +15,53 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var volumesCreate = cli.Command{
+var devicesCreate = cli.Command{
 	Name:    "create",
-	Usage:   "Creates a new volume. Supports two modes:",
+	Usage:   "Register a device for passthrough",
 	Suggest: true,
 	Flags: []cli.Flag{
+		&requestflag.Flag[string]{
+			Name:     "pci-address",
+			Usage:    `PCI address of the device (required, e.g., "0000:a2:00.0")`,
+			Required: true,
+			BodyPath: "pci_address",
+		},
 		&requestflag.Flag[string]{
 			Name:     "name",
-			Usage:    "Volume name",
-			Required: true,
+			Usage:    `Optional globally unique device name. If not provided, a name is auto-generated from the PCI address (e.g., "pci-0000-a2-00-0")`,
 			BodyPath: "name",
 		},
-		&requestflag.Flag[int64]{
-			Name:     "size-gb",
-			Usage:    "Size in gigabytes",
-			Required: true,
-			BodyPath: "size_gb",
-		},
-		&requestflag.Flag[string]{
-			Name:     "id",
-			Usage:    "Optional custom identifier (auto-generated if not provided)",
-			BodyPath: "id",
-		},
 	},
-	Action:          handleVolumesCreate,
+	Action:          handleDevicesCreate,
 	HideHelpCommand: true,
 }
 
-var volumesList = cli.Command{
+var devicesRetrieve = cli.Command{
+	Name:    "retrieve",
+	Usage:   "Get device details",
+	Suggest: true,
+	Flags: []cli.Flag{
+		&requestflag.Flag[string]{
+			Name:     "id",
+			Required: true,
+		},
+	},
+	Action:          handleDevicesRetrieve,
+	HideHelpCommand: true,
+}
+
+var devicesList = cli.Command{
 	Name:            "list",
-	Usage:           "List volumes",
+	Usage:           "List registered devices",
 	Suggest:         true,
 	Flags:           []cli.Flag{},
-	Action:          handleVolumesList,
+	Action:          handleDevicesList,
 	HideHelpCommand: true,
 }
 
-var volumesDelete = cli.Command{
+var devicesDelete = cli.Command{
 	Name:    "delete",
-	Usage:   "Delete volume",
+	Usage:   "Unregister device",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
@@ -61,25 +69,20 @@ var volumesDelete = cli.Command{
 			Required: true,
 		},
 	},
-	Action:          handleVolumesDelete,
+	Action:          handleDevicesDelete,
 	HideHelpCommand: true,
 }
 
-var volumesGet = cli.Command{
-	Name:    "get",
-	Usage:   "Get volume details",
-	Suggest: true,
-	Flags: []cli.Flag{
-		&requestflag.Flag[string]{
-			Name:     "id",
-			Required: true,
-		},
-	},
-	Action:          handleVolumesGet,
+var devicesListAvailable = cli.Command{
+	Name:            "list-available",
+	Usage:           "Discover passthrough-capable devices on host",
+	Suggest:         true,
+	Flags:           []cli.Flag{},
+	Action:          handleDevicesListAvailable,
 	HideHelpCommand: true,
 }
 
-func handleVolumesCreate(ctx context.Context, cmd *cli.Command) error {
+func handleDevicesCreate(ctx context.Context, cmd *cli.Command) error {
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 	unusedArgs := cmd.Args().Slice()
 
@@ -87,7 +90,7 @@ func handleVolumesCreate(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
 
-	params := hypeman.VolumeNewParams{}
+	params := hypeman.DeviceNewParams{}
 
 	options, err := flagOptions(
 		cmd,
@@ -102,7 +105,7 @@ func handleVolumesCreate(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
-	_, err = client.Volumes.New(ctx, params, options...)
+	_, err = client.Devices.New(ctx, params, options...)
 	if err != nil {
 		return err
 	}
@@ -110,67 +113,10 @@ func handleVolumesCreate(ctx context.Context, cmd *cli.Command) error {
 	obj := gjson.ParseBytes(res)
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
-	return ShowJSON(os.Stdout, "volumes create", obj, format, transform)
+	return ShowJSON(os.Stdout, "devices create", obj, format, transform)
 }
 
-func handleVolumesList(ctx context.Context, cmd *cli.Command) error {
-	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
-	unusedArgs := cmd.Args().Slice()
-
-	if len(unusedArgs) > 0 {
-		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
-	}
-
-	options, err := flagOptions(
-		cmd,
-		apiquery.NestedQueryFormatBrackets,
-		apiquery.ArrayQueryFormatComma,
-		EmptyBody,
-		false,
-	)
-	if err != nil {
-		return err
-	}
-
-	var res []byte
-	options = append(options, option.WithResponseBodyInto(&res))
-	_, err = client.Volumes.List(ctx, options...)
-	if err != nil {
-		return err
-	}
-
-	obj := gjson.ParseBytes(res)
-	format := cmd.Root().String("format")
-	transform := cmd.Root().String("transform")
-	return ShowJSON(os.Stdout, "volumes list", obj, format, transform)
-}
-
-func handleVolumesDelete(ctx context.Context, cmd *cli.Command) error {
-	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
-	unusedArgs := cmd.Args().Slice()
-	if !cmd.IsSet("id") && len(unusedArgs) > 0 {
-		cmd.Set("id", unusedArgs[0])
-		unusedArgs = unusedArgs[1:]
-	}
-	if len(unusedArgs) > 0 {
-		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
-	}
-
-	options, err := flagOptions(
-		cmd,
-		apiquery.NestedQueryFormatBrackets,
-		apiquery.ArrayQueryFormatComma,
-		EmptyBody,
-		false,
-	)
-	if err != nil {
-		return err
-	}
-
-	return client.Volumes.Delete(ctx, cmd.Value("id").(string), options...)
-}
-
-func handleVolumesGet(ctx context.Context, cmd *cli.Command) error {
+func handleDevicesRetrieve(ctx context.Context, cmd *cli.Command) error {
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 	unusedArgs := cmd.Args().Slice()
 	if !cmd.IsSet("id") && len(unusedArgs) > 0 {
@@ -194,7 +140,7 @@ func handleVolumesGet(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	options = append(options, option.WithResponseBodyInto(&res))
-	_, err = client.Volumes.Get(ctx, cmd.Value("id").(string), options...)
+	_, err = client.Devices.Get(ctx, cmd.Value("id").(string), options...)
 	if err != nil {
 		return err
 	}
@@ -202,5 +148,94 @@ func handleVolumesGet(ctx context.Context, cmd *cli.Command) error {
 	obj := gjson.ParseBytes(res)
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
-	return ShowJSON(os.Stdout, "volumes get", obj, format, transform)
+	return ShowJSON(os.Stdout, "devices retrieve", obj, format, transform)
+}
+
+func handleDevicesList(ctx context.Context, cmd *cli.Command) error {
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	unusedArgs := cmd.Args().Slice()
+
+	if len(unusedArgs) > 0 {
+		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
+	}
+
+	options, err := flagOptions(
+		cmd,
+		apiquery.NestedQueryFormatBrackets,
+		apiquery.ArrayQueryFormatComma,
+		EmptyBody,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	var res []byte
+	options = append(options, option.WithResponseBodyInto(&res))
+	_, err = client.Devices.List(ctx, options...)
+	if err != nil {
+		return err
+	}
+
+	obj := gjson.ParseBytes(res)
+	format := cmd.Root().String("format")
+	transform := cmd.Root().String("transform")
+	return ShowJSON(os.Stdout, "devices list", obj, format, transform)
+}
+
+func handleDevicesDelete(ctx context.Context, cmd *cli.Command) error {
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	unusedArgs := cmd.Args().Slice()
+	if !cmd.IsSet("id") && len(unusedArgs) > 0 {
+		cmd.Set("id", unusedArgs[0])
+		unusedArgs = unusedArgs[1:]
+	}
+	if len(unusedArgs) > 0 {
+		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
+	}
+
+	options, err := flagOptions(
+		cmd,
+		apiquery.NestedQueryFormatBrackets,
+		apiquery.ArrayQueryFormatComma,
+		EmptyBody,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	return client.Devices.Delete(ctx, cmd.Value("id").(string), options...)
+}
+
+func handleDevicesListAvailable(ctx context.Context, cmd *cli.Command) error {
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	unusedArgs := cmd.Args().Slice()
+
+	if len(unusedArgs) > 0 {
+		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
+	}
+
+	options, err := flagOptions(
+		cmd,
+		apiquery.NestedQueryFormatBrackets,
+		apiquery.ArrayQueryFormatComma,
+		EmptyBody,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	var res []byte
+	options = append(options, option.WithResponseBodyInto(&res))
+	_, err = client.Devices.ListAvailable(ctx, options...)
+	if err != nil {
+		return err
+	}
+
+	obj := gjson.ParseBytes(res)
+	format := cmd.Root().String("format")
+	transform := cmd.Root().String("transform")
+	return ShowJSON(os.Stdout, "devices list-available", obj, format, transform)
 }

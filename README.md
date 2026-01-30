@@ -2,6 +2,8 @@
 
 The official CLI for [Hypeman](https://github.com/kernel/hypeman/).
 
+<!-- x-release-please-start-version -->
+
 ## Installation
 
 ### Installing with Homebrew
@@ -12,21 +14,17 @@ brew install kernel/tap/hypeman
 
 ### Installing with Go
 
-<!-- x-release-please-start-version -->
-
 ```sh
 go install 'github.com/kernel/hypeman-cli/cmd/hypeman@latest'
 ```
 
+<!-- x-release-please-end -->
+
 ### Running Locally
 
-<!-- x-release-please-start-version -->
-
 ```sh
-go run cmd/hypeman/main.go
+./scripts/run args...
 ```
-
-<!-- x-release-please-end -->
 
 ## Usage
 
@@ -123,7 +121,51 @@ For details about specific commands, use the `--help` flag.
 The CLI also provides resource-based commands for more advanced usage:
 
 ```sh
-hypeman [resource] [command] [flags]
+# Pull an image
+hypeman pull nginx:alpine
+
+# Boot a new VM (auto-pulls image if needed)
+hypeman run --name my-app nginx:alpine
+
+# List running VMs
+hypeman ps
+# show all VMs
+hypeman ps -a
+
+# View logs of your app
+# All commands support using VM name, ID, or partial ID
+hypeman logs my-app
+hypeman logs -f my-app
+
+# Execute a command in a running VM
+hypeman exec my-app whoami
+# Shell into the VM
+hypeman exec -it my-app /bin/sh
+
+# VM lifecycle
+# Turn off the VM
+hypeman stop my-app
+# Boot the VM that was turned off
+hypeman start my-app
+# Put the VM to sleep (paused)
+hypeman standby my-app
+# Awaken the VM (resumed)
+hypeman restore my-app
+
+# Create a reverse proxy ("ingress") from the host to your VM
+hypeman ingress create --name my-ingress my-app --hostname my-nginx-app --port 80 --host-port 8081
+
+# List ingresses
+hypeman ingress list
+
+# Curl nginx through your ingress
+curl --header "Host: my-nginx-app" http://127.0.0.1:8081
+
+# Delete an ingress
+hypeman ingress delete my-ingress
+
+# Delete all VMs
+hypeman rm --force --all
 ```
 
 ## Resource Management
@@ -213,11 +255,23 @@ hypeman run --hypervisor qemu --name qemu-vm myimage:latest
 hypeman run --hypervisor cloud-hypervisor --name ch-vm myimage:latest
 ```
 
+The CLI also provides resource-based commands for more advanced usage:
+
+```sh
+hypeman [resource] [command] [flags]
+```
+
 ## Global Flags
 
+- `--help` - Show command line usage
 - `--debug` - Enable debug logging (includes HTTP request/response details)
 - `--version`, `-v` - Show the CLI version
 
+- `--base-url` - Use a custom API backend URL
+- `--format` - Change the output format (`auto`, `explore`, `json`, `jsonl`, `pretty`, `raw`, `yaml`)
+- `--format-error` - Change the output format for errors (`auto`, `explore`, `json`, `jsonl`, `pretty`, `raw`, `yaml`)
+- `--transform` - Transform the data output using [GJSON syntax](https://github.com/tidwall/gjson/blob/master/SYNTAX.md)
+- `--transform-error` - Transform the error output using [GJSON syntax](https://github.com/tidwall/gjson/blob/master/SYNTAX.md)
 ## Development
 
 ### Testing Preview Branches

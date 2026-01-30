@@ -8,14 +8,21 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 
 	"github.com/kernel/hypeman-cli/pkg/cmd"
 	"github.com/kernel/hypeman-go"
 	"github.com/tidwall/gjson"
+	"github.com/urfave/cli/v3"
 )
 
 func main() {
 	app := cmd.Command
+
+	if slices.Contains(os.Args, "__complete") {
+		prepareForAutocomplete(app)
+	}
+
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		// Handle exec exit codes specially - exit with the command's exit code
 		var execErr *cmd.ExecExitError
@@ -36,6 +43,15 @@ func main() {
 		} else {
 			fmt.Fprintf(os.Stderr, "%s\n", err.Error())
 		}
-		os.Exit(1)
+		os.Exit(exitCode)
+	}
+}
+
+func prepareForAutocomplete(cmd *cli.Command) {
+	// urfave/cli does not handle flag completions and will print an error if we inspect a command with invalid flags.
+	// This skips that sort of validation
+	cmd.SkipFlagParsing = true
+	for _, child := range cmd.Commands {
+		prepareForAutocomplete(child)
 	}
 }

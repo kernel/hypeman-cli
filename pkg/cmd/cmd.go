@@ -11,19 +11,20 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/kernel/hypeman-cli/internal/autocomplete"
 	docs "github.com/urfave/cli-docs/v3"
 	"github.com/urfave/cli/v3"
 )
 
 var (
-	Command       *cli.Command
-	OutputFormats = []string{"auto", "explore", "json", "jsonl", "pretty", "raw", "yaml"}
+	Command *cli.Command
 )
 
 func init() {
 	Command = &cli.Command{
 		Name:    "hypeman",
 		Usage:   "CLI for the hypeman API",
+		Suggest: true,
 		Version: Version,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
@@ -86,6 +87,7 @@ func init() {
 		{
 				Name:     "health",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&healthCheck,
 				},
@@ -93,30 +95,37 @@ func init() {
 			{
 				Name:     "images",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&imagesCreate,
 					&imagesList,
+					&imagesDelete,
 					&imagesGet,
 				},
 			},
 			{
 				Name:     "instances",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&instancesCreate,
 					&instancesList,
+					&instancesDelete,
 					&instancesGet,
+					&instancesLogs,
 					&instancesRestore,
 					&instancesLogs,
 					&instancesDelete,
 					&instancesStandby,
 					&instancesStart,
+					&instancesStat,
 					&instancesStop,
 				},
 			},
 			{
 				Name:     "instances:volumes",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&instancesVolumesAttach,
 					&instancesVolumesDetach,
@@ -125,19 +134,55 @@ func init() {
 			{
 				Name:     "volumes",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&volumesCreate,
 					&volumesList,
+					&volumesDelete,
 					&volumesGet,
+				},
+			},
+			{
+				Name:     "devices",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&devicesCreate,
+					&devicesRetrieve,
+					&devicesList,
+					&devicesDelete,
+					&devicesListAvailable,
 				},
 			},
 			{
 				Name:     "ingresses",
 				Category: "API RESOURCE",
+				Suggest:  true,
 				Commands: []*cli.Command{
 					&ingressesCreate,
 					&ingressesList,
+					&ingressesDelete,
 					&ingressesGet,
+				},
+			},
+			{
+				Name:     "resources",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&resourcesGet,
+				},
+			},
+			{
+				Name:     "builds",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&buildsCreate,
+					&buildsList,
+					&buildsCancel,
+					&buildsEvents,
+					&buildsGet,
 				},
 			},
 			{
@@ -168,10 +213,20 @@ func init() {
 					},
 				},
 			},
+			{
+				Name:            "__complete",
+				Hidden:          true,
+				HideHelpCommand: true,
+				Action:          autocomplete.ExecuteShellCompletion,
+			},
+			{
+				Name:            "@completion",
+				Hidden:          true,
+				HideHelpCommand: true,
+				Action:          autocomplete.OutputCompletionScript,
+			},
 		},
-		EnableShellCompletion:      true,
-		ShellCompletionCommandName: "@completion",
-		HideHelpCommand:            true,
+		HideHelpCommand: true,
 	}
 }
 

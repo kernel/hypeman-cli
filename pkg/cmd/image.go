@@ -17,15 +17,15 @@ import (
 )
 
 var imagesCreate = cli.Command{
-	Name:  "create",
-	Usage: "Pull and convert OCI image",
+	Name:    "create",
+	Usage:   "Pull and convert OCI image",
+	Suggest: true,
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
-			Name:  "name",
-			Usage: "OCI image reference (e.g., docker.io/library/nginx:latest)",
-			Config: requestflag.RequestConfig{
-				BodyPath: "name",
-			},
+		&requestflag.Flag[string]{
+			Name:     "name",
+			Usage:    "OCI image reference (e.g., docker.io/library/nginx:latest)",
+			Required: true,
+			BodyPath: "name",
 		},
 	},
 	Action:          handleImagesCreate,
@@ -35,17 +35,20 @@ var imagesCreate = cli.Command{
 var imagesList = cli.Command{
 	Name:            "list",
 	Usage:           "List images",
+	Suggest:         true,
 	Flags:           []cli.Flag{},
 	Action:          handleImagesList,
 	HideHelpCommand: true,
 }
 
 var imagesDelete = cli.Command{
-	Name:  "delete",
-	Usage: "Delete image",
+	Name:    "delete",
+	Usage:   "Delete image",
+	Suggest: true,
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
-			Name: "name",
+		&requestflag.Flag[string]{
+			Name:     "name",
+			Required: true,
 		},
 	},
 	Action:          handleImagesDelete,
@@ -53,11 +56,13 @@ var imagesDelete = cli.Command{
 }
 
 var imagesGet = cli.Command{
-	Name:  "get",
-	Usage: "Get image details",
+	Name:    "get",
+	Usage:   "Get image details",
+	Suggest: true,
 	Flags: []cli.Flag{
-		&requestflag.StringFlag{
-			Name: "name",
+		&requestflag.Flag[string]{
+			Name:     "name",
+			Required: true,
 		},
 	},
 	Action:          handleImagesGet,
@@ -71,6 +76,7 @@ func handleImagesCreate(ctx context.Context, cmd *cli.Command) error {
 	if len(unusedArgs) > 0 {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
+
 	params := hypeman.ImageNewParams{}
 
 	options, err := flagOptions(
@@ -78,6 +84,7 @@ func handleImagesCreate(ctx context.Context, cmd *cli.Command) error {
 		apiquery.NestedQueryFormatBrackets,
 		apiquery.ArrayQueryFormatComma,
 		ApplicationJSON,
+		false,
 	)
 	if err != nil {
 		return err
@@ -103,11 +110,13 @@ func handleImagesList(ctx context.Context, cmd *cli.Command) error {
 	if len(unusedArgs) > 0 {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
+
 	options, err := flagOptions(
 		cmd,
 		apiquery.NestedQueryFormatBrackets,
 		apiquery.ArrayQueryFormatComma,
-		ApplicationJSON,
+		EmptyBody,
+		false,
 	)
 	if err != nil {
 		return err
@@ -136,11 +145,38 @@ func handleImagesDelete(ctx context.Context, cmd *cli.Command) error {
 	if len(unusedArgs) > 0 {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
+
 	options, err := flagOptions(
 		cmd,
 		apiquery.NestedQueryFormatBrackets,
 		apiquery.ArrayQueryFormatComma,
-		ApplicationJSON,
+		EmptyBody,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	return client.Images.Delete(ctx, cmd.Value("name").(string), options...)
+}
+
+func handleImagesDelete(ctx context.Context, cmd *cli.Command) error {
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	unusedArgs := cmd.Args().Slice()
+	if !cmd.IsSet("name") && len(unusedArgs) > 0 {
+		cmd.Set("name", unusedArgs[0])
+		unusedArgs = unusedArgs[1:]
+	}
+	if len(unusedArgs) > 0 {
+		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
+	}
+
+	options, err := flagOptions(
+		cmd,
+		apiquery.NestedQueryFormatBrackets,
+		apiquery.ArrayQueryFormatComma,
+		EmptyBody,
+		false,
 	)
 	if err != nil {
 		return err
@@ -161,11 +197,13 @@ func handleImagesGet(ctx context.Context, cmd *cli.Command) error {
 	if len(unusedArgs) > 0 {
 		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
 	}
+
 	options, err := flagOptions(
 		cmd,
 		apiquery.NestedQueryFormatBrackets,
 		apiquery.ArrayQueryFormatComma,
-		ApplicationJSON,
+		EmptyBody,
+		false,
 	)
 	if err != nil {
 		return err

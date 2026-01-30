@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/kernel/hypeman-cli/internal/apiquery"
+	"github.com/kernel/hypeman-cli/internal/requestflag"
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
 	"github.com/urfave/cli/v3"
@@ -134,6 +136,31 @@ func handleBuild(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return nil
+}
+
+func handleBuildsCancel(ctx context.Context, cmd *cli.Command) error {
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	unusedArgs := cmd.Args().Slice()
+	if !cmd.IsSet("id") && len(unusedArgs) > 0 {
+		cmd.Set("id", unusedArgs[0])
+		unusedArgs = unusedArgs[1:]
+	}
+	if len(unusedArgs) > 0 {
+		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
+	}
+
+	options, err := flagOptions(
+		cmd,
+		apiquery.NestedQueryFormatBrackets,
+		apiquery.ArrayQueryFormatComma,
+		EmptyBody,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	return client.Builds.Cancel(ctx, cmd.Value("id").(string), options...)
 }
 
 // streamBuildEventsSDK streams build events using the SDK
