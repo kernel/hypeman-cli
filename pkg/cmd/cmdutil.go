@@ -27,24 +27,13 @@ func getDefaultRequestOptions(cmd *cli.Command) []option.RequestOption {
 		option.WithHeader("User-Agent", fmt.Sprintf("Hypeman/CLI %s", Version)),
 	}
 
-	// Load config file for fallback values
-	cfg := loadCLIConfig()
-
-	// Precedence for base URL: CLI flag > env var > config file
-	if baseURL := cmd.String("base-url"); baseURL != "" {
+	// Use the same resolvers as WebSocket commands for consistent precedence
+	if baseURL := resolveBaseURL(cmd); baseURL != "" {
 		opts = append(opts, option.WithBaseURL(baseURL))
-	} else if baseURL := os.Getenv("HYPEMAN_BASE_URL"); baseURL != "" {
-		opts = append(opts, option.WithBaseURL(baseURL))
-	} else if cfg.BaseURL != "" {
-		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
 	}
 
-	// Precedence for API key: env var > config file
-	// (no CLI flag for API key for security reasons)
-	if apiKey := os.Getenv("HYPEMAN_API_KEY"); apiKey != "" {
+	if apiKey := resolveAPIKey(); apiKey != "" {
 		opts = append(opts, option.WithAPIKey(apiKey))
-	} else if cfg.APIKey != "" {
-		opts = append(opts, option.WithAPIKey(cfg.APIKey))
 	}
 
 	return opts
