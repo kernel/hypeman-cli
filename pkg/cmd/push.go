@@ -65,7 +65,13 @@ func handlePush(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("invalid target: %w", err)
 	}
 
-	token := resolveAPIKey()
+	// push historically preferred HYPEMAN_BEARER_TOKEN over HYPEMAN_API_KEY.
+	// Check the legacy variable first to preserve backward compatibility for
+	// environments that export both.
+	token := os.Getenv("HYPEMAN_BEARER_TOKEN")
+	if token == "" {
+		token = resolveAPIKey()
+	}
 
 	// Use custom transport that always sends Basic auth header
 	transport := &authTransport{
