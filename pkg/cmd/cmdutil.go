@@ -27,7 +27,6 @@ func getDefaultRequestOptions(cmd *cli.Command) []option.RequestOption {
 		option.WithHeader("User-Agent", fmt.Sprintf("Hypeman/CLI %s", Version)),
 	}
 
-	// Use the same resolvers as WebSocket commands for consistent precedence
 	if baseURL := resolveBaseURL(cmd); baseURL != "" {
 		opts = append(opts, option.WithBaseURL(baseURL))
 	}
