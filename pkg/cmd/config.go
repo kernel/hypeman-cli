@@ -67,14 +67,8 @@ func resolveBaseURL(cmd *cli.Command) string {
 }
 
 // resolveAPIKey returns the effective API key with precedence:
-// HYPEMAN_API_KEY env > config file > HYPEMAN_BEARER_TOKEN env (legacy).
+// HYPEMAN_API_KEY env > config file.
 func resolveAPIKey() string {
 	cfg := loadCLIConfig()
-	if cfg.APIKey != "" {
-		return cfg.APIKey
-	}
-	if k := os.Getenv("HYPEMAN_BEARER_TOKEN"); k != "" {
-		return k
-	}
-	return ""
+	return cfg.APIKey
 }
