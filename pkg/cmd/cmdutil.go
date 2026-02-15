@@ -39,12 +39,11 @@ func getDefaultRequestOptions(cmd *cli.Command) []option.RequestOption {
 		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
 	}
 
-	// Precedence for API key: env var > config file
+	// Precedence for API key: HYPEMAN_BEARER_TOKEN > HYPEMAN_API_KEY > config file
 	// (no CLI flag for API key for security reasons)
-	if apiKey := os.Getenv("HYPEMAN_API_KEY"); apiKey != "" {
+	// Uses resolveAPIKey() to keep precedence consistent with WebSocket auth.
+	if apiKey := resolveAPIKey(); apiKey != "" {
 		opts = append(opts, option.WithAPIKey(apiKey))
-	} else if cfg.APIKey != "" {
-		opts = append(opts, option.WithAPIKey(cfg.APIKey))
 	}
 
 	return opts
