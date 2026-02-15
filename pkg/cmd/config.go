@@ -7,6 +7,7 @@ import (
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+	"github.com/urfave/cli/v3"
 )
 
 // CLIConfig holds CLI configuration loaded from cli.yaml
@@ -43,4 +44,33 @@ func loadCLIConfig() *CLIConfig {
 
 	_ = k.Unmarshal("", cfg)
 	return cfg
+}
+
+// resolveBaseURL returns the effective base URL with precedence:
+// CLI flag > env var > config file > default.
+func resolveBaseURL(cmd *cli.Command) string {
+	if u := cmd.Root().String("base-url"); u != "" {
+		return u
+	}
+	if u := os.Getenv("HYPEMAN_BASE_URL"); u != "" {
+		return u
+	}
+	cfg := loadCLIConfig()
+	if cfg.BaseURL != "" {
+		return cfg.BaseURL
+	}
+	return "http://localhost:8080"
+}
+
+// resolveAPIKey returns the effective API key with precedence:
+// env var > config file.
+func resolveAPIKey() string {
+	if k := os.Getenv("HYPEMAN_BEARER_TOKEN"); k != "" {
+		return k
+	}
+	if k := os.Getenv("HYPEMAN_API_KEY"); k != "" {
+		return k
+	}
+	cfg := loadCLIConfig()
+	return cfg.APIKey
 }
