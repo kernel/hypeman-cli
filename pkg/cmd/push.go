@@ -35,13 +35,7 @@ func handlePush(ctx context.Context, cmd *cli.Command) error {
 		targetName = args[1]
 	}
 
-	baseURL := cmd.String("base-url")
-	if baseURL == "" {
-		baseURL = os.Getenv("HYPEMAN_BASE_URL")
-	}
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
-	}
+	baseURL := resolveBaseURL(cmd)
 
 	parsedURL, err := url.Parse(baseURL)
 	if err != nil {
@@ -73,7 +67,7 @@ func handlePush(ctx context.Context, cmd *cli.Command) error {
 
 	token := os.Getenv("HYPEMAN_BEARER_TOKEN")
 	if token == "" {
-		token = os.Getenv("HYPEMAN_API_KEY")
+		token, _ = resolveAPIKey()
 	}
 
 	// Use custom transport that always sends Basic auth header

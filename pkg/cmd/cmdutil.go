@@ -22,29 +22,46 @@ import (
 	"golang.org/x/term"
 )
 
+// resolveBaseURL returns the effective base URL using precedence:
+// CLI flag > env var > config file > default.
+func resolveBaseURL(cmd *cli.Command) string {
+	if baseURL := cmd.Root().String("base-url"); baseURL != "" {
+		return baseURL
+	}
+	if baseURL := os.Getenv("HYPEMAN_BASE_URL"); baseURL != "" {
+		return baseURL
+	}
+	cfg := loadCLIConfig()
+	if cfg.BaseURL != "" {
+		return cfg.BaseURL
+	}
+	return "http://localhost:8080"
+}
+
+// resolveAPIKey returns the effective API key using precedence:
+// env var > config file. Returns an error if no key is found.
+func resolveAPIKey() (string, error) {
+	if apiKey := os.Getenv("HYPEMAN_API_KEY"); apiKey != "" {
+		return apiKey, nil
+	}
+	cfg := loadCLIConfig()
+	if cfg.APIKey != "" {
+		return cfg.APIKey, nil
+	}
+	return "", fmt.Errorf("HYPEMAN_API_KEY environment variable or api_key in config file required")
+}
+
 func getDefaultRequestOptions(cmd *cli.Command) []option.RequestOption {
 	opts := []option.RequestOption{
 		option.WithHeader("User-Agent", fmt.Sprintf("Hypeman/CLI %s", Version)),
 	}
 
-	// Load config file for fallback values
-	cfg := loadCLIConfig()
-
-	// Precedence for base URL: CLI flag > env var > config file
-	if baseURL := cmd.String("base-url"); baseURL != "" {
+	if baseURL := resolveBaseURL(cmd); baseURL != "http://localhost:8080" {
 		opts = append(opts, option.WithBaseURL(baseURL))
-	} else if baseURL := os.Getenv("HYPEMAN_BASE_URL"); baseURL != "" {
-		opts = append(opts, option.WithBaseURL(baseURL))
-	} else if cfg.BaseURL != "" {
-		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
 	}
 
-	// Precedence for API key: env var > config file
-	// (no CLI flag for API key for security reasons)
-	if apiKey := os.Getenv("HYPEMAN_API_KEY"); apiKey != "" {
+	if apiKey, err := resolveAPIKey(); err == nil {
 		opts = append(opts, option.WithAPIKey(apiKey))
-	} else if cfg.APIKey != "" {
-		opts = append(opts, option.WithAPIKey(cfg.APIKey))
 	}
 
 	return opts

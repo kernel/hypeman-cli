@@ -146,17 +146,11 @@ func handleCp(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	// Get base URL and API key
-	baseURL := cmd.Root().String("base-url")
-	if baseURL == "" {
-		baseURL = os.Getenv("HYPEMAN_BASE_URL")
-	}
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
-	}
+	baseURL := resolveBaseURL(cmd)
 
-	apiKey := os.Getenv("HYPEMAN_API_KEY")
-	if apiKey == "" {
-		return fmt.Errorf("HYPEMAN_API_KEY environment variable required")
+	apiKey, err := resolveAPIKey()
+	if err != nil {
+		return err
 	}
 
 	archive := cmd.Bool("archive")
