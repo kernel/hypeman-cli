@@ -3,8 +3,10 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"github.com/urfave/cli/v3"
@@ -26,33 +28,35 @@ func getCLIConfigPath() string {
 	return filepath.Join(home, ".config", "hypeman", "cli.yaml")
 }
 
-// loadCLIConfig loads CLI configuration from the config file.
+// loadCLIConfig loads CLI configuration from the config file, then
+// overlays HYPEMAN_-prefixed environment variables (highest precedence).
+// HYPEMAN_BASE_URL -> base_url, HYPEMAN_API_KEY -> api_key.
 // Returns an empty config if the file doesn't exist or can't be parsed.
 func loadCLIConfig() *CLIConfig {
 	cfg := &CLIConfig{}
+	k := koanf.New(".")
 
 	configPath := getCLIConfigPath()
-	if configPath == "" {
-		return cfg
+	if configPath != "" {
+		_ = k.Load(file.Provider(configPath), yaml.Parser())
 	}
 
-	k := koanf.New(".")
-	if err := k.Load(file.Provider(configPath), yaml.Parser()); err != nil {
-		// File doesn't exist or can't be parsed - return empty config
-		return cfg
-	}
+	// Overlay HYPEMAN_-prefixed env vars: HYPEMAN_BASE_URL -> base_url
+	_ = k.Load(env.ProviderWithValue("HYPEMAN_", ".", func(key string, value string) (string, interface{}) {
+		if value == "" {
+			return "", nil
+		}
+		return strings.ToLower(strings.TrimPrefix(key, "HYPEMAN_")), value
+	}), nil)
 
 	_ = k.Unmarshal("", cfg)
 	return cfg
 }
 
 // resolveBaseURL returns the effective base URL with precedence:
-// CLI flag > env var > config file > default.
+// CLI flag > HYPEMAN_BASE_URL env > config file > default.
 func resolveBaseURL(cmd *cli.Command) string {
 	if u := cmd.Root().String("base-url"); u != "" {
-		return u
-	}
-	if u := os.Getenv("HYPEMAN_BASE_URL"); u != "" {
 		return u
 	}
 	cfg := loadCLIConfig()
@@ -63,14 +67,14 @@ func resolveBaseURL(cmd *cli.Command) string {
 }
 
 // resolveAPIKey returns the effective API key with precedence:
-// HYPEMAN_API_KEY env var > HYPEMAN_BEARER_TOKEN env var (legacy) > config file.
+// HYPEMAN_API_KEY env > config file > HYPEMAN_BEARER_TOKEN env (legacy).
 func resolveAPIKey() string {
-	if k := os.Getenv("HYPEMAN_API_KEY"); k != "" {
-		return k
+	cfg := loadCLIConfig()
+	if cfg.APIKey != "" {
+		return cfg.APIKey
 	}
 	if k := os.Getenv("HYPEMAN_BEARER_TOKEN"); k != "" {
 		return k
 	}
-	cfg := loadCLIConfig()
-	return cfg.APIKey
+	return ""
 }
