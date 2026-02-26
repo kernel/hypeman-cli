@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
@@ -24,6 +25,14 @@ var psCmd = cli.Command{
 			Aliases: []string{"q"},
 			Usage:   "Only display instance IDs",
 		},
+		&cli.StringFlag{
+			Name:  "state",
+			Usage: "Filter instances by state (e.g., Running, Stopped, Standby)",
+		},
+		&cli.StringSliceFlag{
+			Name:  "metadata",
+			Usage: "Filter by metadata key-value pair (KEY=VALUE, can be repeated)",
+		},
 	},
 	Action:          handlePs,
 	HideHelpCommand: true,
@@ -37,8 +46,26 @@ func handlePs(ctx context.Context, cmd *cli.Command) error {
 		opts = append(opts, debugMiddlewareOption)
 	}
 
+	params := hypeman.InstanceListParams{}
+
+	if state := cmd.String("state"); state != "" {
+		params.State = hypeman.InstanceListParamsState(state)
+	}
+
+	if metadataSpecs := cmd.StringSlice("metadata"); len(metadataSpecs) > 0 {
+		metadata := make(map[string]string)
+		for _, m := range metadataSpecs {
+			parts := strings.SplitN(m, "=", 2)
+			if len(parts) == 2 {
+				metadata[parts[0]] = parts[1]
+			}
+		}
+		params.Metadata = metadata
+	}
+
 	instances, err := client.Instances.List(
 		ctx,
+		params,
 		opts...,
 	)
 	if err != nil {
@@ -47,11 +74,12 @@ func handlePs(ctx context.Context, cmd *cli.Command) error {
 
 	showAll := cmd.Bool("all")
 	quietMode := cmd.Bool("quiet")
+	stateFilter := cmd.String("state")
 
-	// Filter instances
+	// Filter instances client-side only when no server-side filter is active
 	var filtered []hypeman.Instance
 	for _, inst := range *instances {
-		if showAll || inst.State == "Running" {
+		if showAll || stateFilter != "" || inst.State == "Running" {
 			filtered = append(filtered, inst)
 		}
 	}
