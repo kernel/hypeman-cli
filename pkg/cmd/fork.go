@@ -87,6 +87,8 @@ func handleFork(ctx context.Context, cmd *cli.Command) error {
 		return ShowJSON(os.Stdout, "instance fork", obj, format, transform)
 	}
 
+	// Output instance ID (useful for scripting)
+	fmt.Println(forked.ID)
 	fmt.Fprintf(os.Stderr, "Forked %s as %s (state: %s)\n", source, forked.Name, forked.State)
 	return nil
 }

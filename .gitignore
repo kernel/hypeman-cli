@@ -5,3 +5,4 @@ dist/
 hypeman/**
 bin/hypeman
 demos/
+.DS_Store
