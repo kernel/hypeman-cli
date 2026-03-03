@@ -5,6 +5,7 @@ import (
 
 	"github.com/kernel/hypeman-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFormatGPU(t *testing.T) {
@@ -60,6 +61,11 @@ func TestFormatHypervisor(t *testing.T) {
 			expected:   "qemu",
 		},
 		{
+			name:       "firecracker",
+			hypervisor: hypeman.InstanceHypervisorFirecracker,
+			expected:   "fc",
+		},
+		{
 			name:       "empty defaults to ch",
 			hypervisor: "",
 			expected:   "ch",
@@ -77,4 +83,37 @@ func TestFormatHypervisor(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestParseMetadataFilters(t *testing.T) {
+	t.Run("parses valid entries", func(t *testing.T) {
+		metadata, malformed := parseMetadataFilters([]string{
+			"team=backend",
+			"env=staging",
+		})
+
+		require.Empty(t, malformed)
+		assert.Equal(t, map[string]string{
+			"team": "backend",
+			"env":  "staging",
+		}, metadata)
+	})
+
+	t.Run("returns malformed entries and only valid metadata", func(t *testing.T) {
+		metadata, malformed := parseMetadataFilters([]string{
+			"team=backend",
+			"missing-delimiter",
+			"=empty-key",
+			"region=us-east-1",
+		})
+
+		assert.Equal(t, map[string]string{
+			"team":   "backend",
+			"region": "us-east-1",
+		}, metadata)
+		assert.Equal(t, []string{
+			"missing-delimiter",
+			"=empty-key",
+		}, malformed)
+	})
 }

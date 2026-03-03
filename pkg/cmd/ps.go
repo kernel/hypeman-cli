@@ -47,20 +47,17 @@ func handlePs(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	params := hypeman.InstanceListParams{}
-
-	if state := cmd.String("state"); state != "" {
-		params.State = hypeman.InstanceListParamsState(state)
+	stateFilter := cmd.String("state")
+	if stateFilter != "" {
+		params.State = hypeman.InstanceListParamsState(stateFilter)
 	}
 
-	if metadataSpecs := cmd.StringSlice("metadata"); len(metadataSpecs) > 0 {
-		metadata := make(map[string]string)
-		for _, m := range metadataSpecs {
-			parts := strings.SplitN(m, "=", 2)
-			if len(parts) == 2 {
-				metadata[parts[0]] = parts[1]
-			}
-		}
-		params.Metadata = metadata
+	metadataFilters, malformedMetadata := parseMetadataFilters(cmd.StringSlice("metadata"))
+	for _, malformed := range malformedMetadata {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed metadata filter: %s\n", malformed)
+	}
+	if len(metadataFilters) > 0 {
+		params.Metadata = metadataFilters
 	}
 
 	instances, err := client.Instances.List(
@@ -74,12 +71,12 @@ func handlePs(ctx context.Context, cmd *cli.Command) error {
 
 	showAll := cmd.Bool("all")
 	quietMode := cmd.Bool("quiet")
-	stateFilter := cmd.String("state")
+	serverSideFilterActive := stateFilter != "" || len(metadataFilters) > 0
 
 	// Filter instances client-side only when no server-side filter is active
 	var filtered []hypeman.Instance
 	for _, inst := range *instances {
-		if showAll || stateFilter != "" || inst.State == "Running" {
+		if showAll || serverSideFilterActive || inst.State == "Running" {
 			filtered = append(filtered, inst)
 		}
 	}
@@ -94,7 +91,7 @@ func handlePs(ctx context.Context, cmd *cli.Command) error {
 
 	// Table output
 	if len(filtered) == 0 {
-		if !showAll {
+		if !showAll && !serverSideFilterActive {
 			fmt.Fprintln(os.Stderr, "No running instances. Use -a to show all.")
 		}
 		return nil
@@ -138,6 +135,8 @@ func formatHypervisor(hv hypeman.InstanceHypervisor) string {
 		return "ch"
 	case hypeman.InstanceHypervisorQemu:
 		return "qemu"
+	case hypeman.InstanceHypervisorFirecracker:
+		return "fc"
 	case hypeman.InstanceHypervisorVz:
 		return "vz"
 	default:
@@ -146,4 +145,20 @@ func formatHypervisor(hv hypeman.InstanceHypervisor) string {
 		}
 		return string(hv)
 	}
+}
+
+func parseMetadataFilters(specs []string) (map[string]string, []string) {
+	metadata := make(map[string]string)
+	var malformed []string
+
+	for _, spec := range specs {
+		parts := strings.SplitN(spec, "=", 2)
+		if len(parts) != 2 || parts[0] == "" {
+			malformed = append(malformed, spec)
+			continue
+		}
+		metadata[parts[0]] = parts[1]
+	}
+
+	return metadata, malformed
 }
