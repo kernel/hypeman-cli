@@ -10,8 +10,9 @@ require (
 	github.com/google/go-containerregistry v0.20.7
 	github.com/gorilla/websocket v1.5.3
 	github.com/itchyny/json2yaml v0.1.4
-	github.com/kernel/hypeman-go v0.11.0
+	github.com/kernel/hypeman-go v0.14.0
 	github.com/knadh/koanf/parsers/yaml v1.1.0
+	github.com/knadh/koanf/providers/env v1.1.0
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/v2 v2.3.2
 	github.com/muesli/reflow v0.3.0
@@ -52,7 +53,6 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
-	github.com/knadh/koanf/providers/env v1.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect

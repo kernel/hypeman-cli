@@ -84,7 +84,7 @@ Examples:
 		// Hypervisor flag
 		&cli.StringFlag{
 			Name:  "hypervisor",
-			Usage: `Hypervisor to use: "cloud-hypervisor", "qemu", or "vz"`,
+			Usage: `Hypervisor to use: "cloud-hypervisor", "firecracker", "qemu", or "vz"`,
 		},
 		// Resource limit flags
 		&cli.StringFlag{
@@ -236,12 +236,14 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 		switch hypervisor {
 		case "cloud-hypervisor", "ch":
 			params.Hypervisor = hypeman.InstanceNewParamsHypervisorCloudHypervisor
+		case "firecracker", "fc":
+			params.Hypervisor = hypeman.InstanceNewParamsHypervisorFirecracker
 		case "qemu":
 			params.Hypervisor = hypeman.InstanceNewParamsHypervisorQemu
 		case "vz":
 			params.Hypervisor = hypeman.InstanceNewParamsHypervisorVz
 		default:
-			return fmt.Errorf("invalid hypervisor: %s (must be 'cloud-hypervisor', 'qemu', or 'vz')", hypervisor)
+			return fmt.Errorf("invalid hypervisor: %s (must be 'cloud-hypervisor', 'firecracker', 'qemu', or 'vz')", hypervisor)
 		}
 	}
 

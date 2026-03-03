@@ -4,3 +4,5 @@ dist/
 .env
 hypeman/**
 bin/hypeman
+demos/
+.DS_Store

@@ -261,7 +261,7 @@ func randomSuffix(n int) string {
 // Returns an error if the identifier is ambiguous or not found.
 func ResolveInstance(ctx context.Context, client *hypeman.Client, identifier string) (string, error) {
 	// List all instances
-	instances, err := client.Instances.List(ctx)
+	instances, err := client.Instances.List(ctx, hypeman.InstanceListParams{})
 	if err != nil {
 		return "", fmt.Errorf("failed to list instances: %w", err)
 	}

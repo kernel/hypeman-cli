@@ -77,6 +77,14 @@ Examples:
 			Name:  "image-name",
 			Usage: `Custom image name for the build output (pushed to {registry}/{image_name} instead of {registry}/builds/{id})`,
 		},
+		&cli.IntFlag{
+			Name:  "cpus",
+			Usage: "Number of vCPUs for builder VM (default 2)",
+		},
+		&cli.IntFlag{
+			Name:  "memory",
+			Usage: "Memory limit for builder VM in MB (default 2048)",
+		},
 	},
 	Commands: []*cli.Command{
 		&buildListCmd,
@@ -171,6 +179,12 @@ func handleBuild(ctx context.Context, cmd *cli.Command) error {
 	}
 	if v := cmd.String("image-name"); v != "" {
 		params.ImageName = hypeman.Opt(v)
+	}
+	if cmd.IsSet("cpus") {
+		params.CPUs = hypeman.Opt(int64(cmd.Int("cpus")))
+	}
+	if cmd.IsSet("memory") {
+		params.MemoryMB = hypeman.Opt(int64(cmd.Int("memory")))
 	}
 
 	// Start build
