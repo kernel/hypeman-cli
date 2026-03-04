@@ -56,15 +56,14 @@ func handleFork(ctx context.Context, cmd *cli.Command) error {
 		opts = append(opts, debugMiddlewareOption)
 	}
 
-	params := instanceForkParams{
+	params := hypeman.InstanceForkParams{
 		Name: targetName,
 	}
 	if cmd.IsSet("from-running") {
-		fromRunning := cmd.Bool("from-running")
-		params.FromRunning = &fromRunning
+		params.FromRunning = hypeman.Opt(cmd.Bool("from-running"))
 	}
 	if targetState != "" {
-		params.TargetState = &targetState
+		params.TargetState = hypeman.InstanceForkParamsTargetState(targetState)
 	}
 
 	fmt.Fprintf(os.Stderr, "Forking %s to %s...\n", source, targetName)
@@ -77,8 +76,8 @@ func handleFork(ctx context.Context, cmd *cli.Command) error {
 		opts = append(opts, option.WithResponseBodyInto(&raw))
 	}
 
-	var forked hypeman.Instance
-	if err := client.Post(ctx, fmt.Sprintf("instances/%s/fork", sourceID), params, &forked, opts...); err != nil {
+	forked, err := client.Instances.Fork(ctx, sourceID, params, opts...)
+	if err != nil {
 		return err
 	}
 
@@ -87,7 +86,6 @@ func handleFork(ctx context.Context, cmd *cli.Command) error {
 		return ShowJSON(os.Stdout, "instance fork", obj, format, transform)
 	}
 
-	// Output instance ID (useful for scripting)
 	fmt.Println(forked.ID)
 	fmt.Fprintf(os.Stderr, "Forked %s as %s (state: %s)\n", source, forked.Name, forked.State)
 	return nil
@@ -106,10 +104,4 @@ func normalizeForkTargetState(state string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid target state: %s (must be Stopped, Standby, or Running)", state)
 	}
-}
-
-type instanceForkParams struct {
-	Name        string  `json:"name"`
-	FromRunning *bool   `json:"from_running,omitempty"`
-	TargetState *string `json:"target_state,omitempty"`
 }
