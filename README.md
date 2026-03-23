@@ -31,8 +31,8 @@ go run cmd/hypeman/main.go
 ## Usage
 
 ```sh
-# Create an image (or use `hypeman pull` as an alias)
-hypeman image create nginx:alpine
+# Pull an image
+hypeman pull nginx:alpine
 
 # Boot a new VM (auto-pulls image if needed)
 hypeman run --name my-app nginx:alpine
