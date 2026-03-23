@@ -250,20 +250,11 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 			params.Network.BandwidthUpload = hypeman.Opt(bandwidthUp)
 		}
 		if egressEnabledSet || egressMode != "" {
-			params.Network.Egress = hypeman.InstanceNewParamsNetworkEgress{}
-			if egressEnabledSet {
-				params.Network.Egress.Enabled = hypeman.Opt(cmd.Bool("network-egress-enabled"))
+			egress, err := buildNetworkEgress(cmd.Bool("network-egress-enabled"), egressEnabledSet, egressMode)
+			if err != nil {
+				return err
 			}
-			if egressMode != "" {
-				switch egressMode {
-				case "all", "http_https_only":
-					params.Network.Egress.Enforcement = hypeman.InstanceNewParamsNetworkEgressEnforcement{
-						Mode: egressMode,
-					}
-				default:
-					return fmt.Errorf("invalid network-egress-mode: %s (must be 'all' or 'http_https_only')", egressMode)
-				}
-			}
+			params.Network.Egress = egress
 		}
 	}
 
@@ -389,6 +380,28 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 	fmt.Println(result.ID)
 
 	return nil
+}
+
+func buildNetworkEgress(enabled bool, enabledSet bool, mode string) (hypeman.InstanceNewParamsNetworkEgress, error) {
+	egress := hypeman.InstanceNewParamsNetworkEgress{}
+	if enabledSet {
+		egress.Enabled = hypeman.Opt(enabled)
+	} else if mode != "" {
+		egress.Enabled = hypeman.Opt(true)
+	}
+
+	if mode != "" {
+		switch mode {
+		case "all", "http_https_only":
+			egress.Enforcement = hypeman.InstanceNewParamsNetworkEgressEnforcement{
+				Mode: mode,
+			}
+		default:
+			return hypeman.InstanceNewParamsNetworkEgress{}, fmt.Errorf("invalid network-egress-mode: %s (must be 'all' or 'http_https_only')", mode)
+		}
+	}
+
+	return egress, nil
 }
 
 // isNotFoundError checks if err is a 404 not found error
