@@ -187,14 +187,11 @@ func handleSnapshotCreate(ctx context.Context, cmd *cli.Command) error {
 			compression.Level = hypeman.Opt(int64(cmd.Int("compression-level")))
 		}
 		if algorithm := cmd.String("compression-algorithm"); algorithm != "" {
-			switch strings.ToLower(algorithm) {
-			case "zstd":
-				compression.Algorithm = shared.SnapshotCompressionConfigAlgorithmZstd
-			case "lz4":
-				compression.Algorithm = shared.SnapshotCompressionConfigAlgorithmLz4
-			default:
-				return fmt.Errorf("invalid compression algorithm: %s (must be 'zstd' or 'lz4')", algorithm)
+			parsedAlgorithm, err := parseSnapshotCompressionAlgorithm(algorithm)
+			if err != nil {
+				return err
 			}
+			compression.Algorithm = parsedAlgorithm
 		}
 		params.Compression = compression
 	}
@@ -474,6 +471,17 @@ func parseSnapshotKind(raw string, fallback hypeman.SnapshotKind) (hypeman.Snaps
 		return hypeman.SnapshotKindStopped, nil
 	default:
 		return "", fmt.Errorf("invalid snapshot kind: %s (must be Standby or Stopped)", raw)
+	}
+}
+
+func parseSnapshotCompressionAlgorithm(raw string) (shared.SnapshotCompressionConfigAlgorithm, error) {
+	switch strings.ToLower(raw) {
+	case "zstd":
+		return shared.SnapshotCompressionConfigAlgorithmZstd, nil
+	case "lz4":
+		return shared.SnapshotCompressionConfigAlgorithmLz4, nil
+	default:
+		return "", fmt.Errorf("invalid compression algorithm: %s (must be 'zstd' or 'lz4')", raw)
 	}
 }
 

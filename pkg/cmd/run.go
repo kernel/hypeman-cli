@@ -344,14 +344,11 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 			compression.Level = hypeman.Opt(int64(cmd.Int("snapshot-compression-level")))
 		}
 		if algorithm := cmd.String("snapshot-compression-algorithm"); algorithm != "" {
-			switch algorithm {
-			case "zstd":
-				compression.Algorithm = shared.SnapshotCompressionConfigAlgorithmZstd
-			case "lz4":
-				compression.Algorithm = shared.SnapshotCompressionConfigAlgorithmLz4
-			default:
-				return fmt.Errorf("invalid snapshot compression algorithm: %s (must be 'zstd' or 'lz4')", algorithm)
+			parsedAlgorithm, err := parseSnapshotCompressionAlgorithm(algorithm)
+			if err != nil {
+				return fmt.Errorf("invalid snapshot compression algorithm: %w", err)
 			}
+			compression.Algorithm = parsedAlgorithm
 		}
 		params.SnapshotPolicy = hypeman.SnapshotPolicyParam{
 			Compression: compression,
