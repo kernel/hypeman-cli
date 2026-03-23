@@ -29,7 +29,36 @@ Examples:
 
   # Show only GPU information
   hypeman resources --transform gpu`,
+	Commands: []*cli.Command{
+		&resourcesReclaimMemoryCmd,
+	},
 	Action:          handleResources,
+	HideHelpCommand: true,
+}
+
+var resourcesReclaimMemoryCmd = cli.Command{
+	Name:  "reclaim-memory",
+	Usage: "Request guest memory reclaim from reclaim-eligible instances",
+	Flags: []cli.Flag{
+		&cli.Int64Flag{
+			Name:     "reclaim-bytes",
+			Usage:    "Total bytes of guest memory to reclaim across eligible VMs",
+			Required: true,
+		},
+		&cli.BoolFlag{
+			Name:  "dry-run",
+			Usage: "Compute reclaim plan without applying balloon changes",
+		},
+		&cli.StringFlag{
+			Name:  "hold-for",
+			Usage: `Duration to keep reclaim hold active (e.g., "5m", "30s")`,
+		},
+		&cli.StringFlag{
+			Name:  "reason",
+			Usage: "Operator-provided reason attached to logs and traces",
+		},
+	},
+	Action:          handleResourcesReclaimMemory,
 	HideHelpCommand: true,
 }
 
@@ -59,6 +88,59 @@ func handleResources(ctx context.Context, cmd *cli.Command) error {
 	// Otherwise use standard JSON display
 	obj := gjson.ParseBytes(res)
 	return ShowJSON(os.Stdout, "resources", obj, format, transform)
+}
+
+func handleResourcesReclaimMemory(ctx context.Context, cmd *cli.Command) error {
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+
+	reclaimBytes := cmd.Int64("reclaim-bytes")
+	if reclaimBytes <= 0 {
+		return fmt.Errorf("reclaim-bytes must be greater than 0")
+	}
+
+	request := hypeman.MemoryReclaimRequestParam{
+		ReclaimBytes: reclaimBytes,
+	}
+	if cmd.IsSet("dry-run") {
+		request.DryRun = hypeman.Opt(cmd.Bool("dry-run"))
+	}
+	if holdFor := cmd.String("hold-for"); holdFor != "" {
+		request.HoldFor = hypeman.Opt(holdFor)
+	}
+	if reason := cmd.String("reason"); reason != "" {
+		request.Reason = hypeman.Opt(reason)
+	}
+
+	params := hypeman.ResourceReclaimMemoryParams{
+		MemoryReclaimRequest: request,
+	}
+
+	var opts []option.RequestOption
+	if cmd.Root().Bool("debug") {
+		opts = append(opts, debugMiddlewareOption)
+	}
+
+	var res []byte
+	opts = append(opts, option.WithResponseBodyInto(&res))
+	_, err := client.Resources.ReclaimMemory(ctx, params, opts...)
+	if err != nil {
+		return err
+	}
+
+	format := cmd.Root().String("format")
+	transform := cmd.Root().String("transform")
+	obj := gjson.ParseBytes(res)
+
+	if format == "auto" || format == "" {
+		fmt.Printf("Requested reclaim: %d bytes\n", obj.Get("requested_reclaim_bytes").Int())
+		fmt.Printf("Planned reclaim:   %d bytes\n", obj.Get("planned_reclaim_bytes").Int())
+		fmt.Printf("Applied reclaim:   %d bytes\n", obj.Get("applied_reclaim_bytes").Int())
+		fmt.Printf("Host pressure:     %s\n", obj.Get("host_pressure_state").String())
+		fmt.Printf("Actions:           %d\n", len(obj.Get("actions").Array()))
+		return nil
+	}
+
+	return ShowJSON(os.Stdout, "resources reclaim-memory", obj, format, transform)
 }
 
 func showResourcesTable(data []byte) error {

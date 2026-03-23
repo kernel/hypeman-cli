@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
@@ -30,8 +29,9 @@ var psCmd = cli.Command{
 			Usage: "Filter instances by state (e.g., Running, Stopped, Standby)",
 		},
 		&cli.StringSliceFlag{
-			Name:  "metadata",
-			Usage: "Filter by metadata key-value pair (KEY=VALUE, can be repeated)",
+			Name:    "tag",
+			Aliases: []string{"metadata"},
+			Usage:   "Filter by tag key-value pair (KEY=VALUE, can be repeated)",
 		},
 	},
 	Action:          handlePs,
@@ -52,12 +52,12 @@ func handlePs(ctx context.Context, cmd *cli.Command) error {
 		params.State = hypeman.InstanceListParamsState(stateFilter)
 	}
 
-	metadataFilters, malformedMetadata := parseMetadataFilters(cmd.StringSlice("metadata"))
-	for _, malformed := range malformedMetadata {
-		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed metadata filter: %s\n", malformed)
+	tagFilters, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
+	for _, malformed := range malformedTags {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag filter: %s\n", malformed)
 	}
-	if len(metadataFilters) > 0 {
-		params.Metadata = metadataFilters
+	if len(tagFilters) > 0 {
+		params.Tags = tagFilters
 	}
 
 	instances, err := client.Instances.List(
@@ -71,7 +71,7 @@ func handlePs(ctx context.Context, cmd *cli.Command) error {
 
 	showAll := cmd.Bool("all")
 	quietMode := cmd.Bool("quiet")
-	serverSideFilterActive := stateFilter != "" || len(metadataFilters) > 0
+	serverSideFilterActive := stateFilter != "" || len(tagFilters) > 0
 
 	// Filter instances client-side only when no server-side filter is active
 	var filtered []hypeman.Instance
@@ -145,20 +145,4 @@ func formatHypervisor(hv hypeman.InstanceHypervisor) string {
 		}
 		return string(hv)
 	}
-}
-
-func parseMetadataFilters(specs []string) (map[string]string, []string) {
-	metadata := make(map[string]string)
-	var malformed []string
-
-	for _, spec := range specs {
-		parts := strings.SplitN(spec, "=", 2)
-		if len(parts) != 2 || parts[0] == "" {
-			malformed = append(malformed, spec)
-			continue
-		}
-		metadata[parts[0]] = parts[1]
-	}
-
-	return metadata, malformed
 }

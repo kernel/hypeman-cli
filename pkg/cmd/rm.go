@@ -120,4 +120,3 @@ func handleRm(ctx context.Context, cmd *cli.Command) error {
 
 	return lastErr
 }
-

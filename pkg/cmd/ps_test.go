@@ -85,9 +85,9 @@ func TestFormatHypervisor(t *testing.T) {
 	}
 }
 
-func TestParseMetadataFilters(t *testing.T) {
+func TestParseKeyValueSpecs(t *testing.T) {
 	t.Run("parses valid entries", func(t *testing.T) {
-		metadata, malformed := parseMetadataFilters([]string{
+		values, malformed := parseKeyValueSpecs([]string{
 			"team=backend",
 			"env=staging",
 		})
@@ -96,11 +96,11 @@ func TestParseMetadataFilters(t *testing.T) {
 		assert.Equal(t, map[string]string{
 			"team": "backend",
 			"env":  "staging",
-		}, metadata)
+		}, values)
 	})
 
-	t.Run("returns malformed entries and only valid metadata", func(t *testing.T) {
-		metadata, malformed := parseMetadataFilters([]string{
+	t.Run("returns malformed entries and only valid values", func(t *testing.T) {
+		values, malformed := parseKeyValueSpecs([]string{
 			"team=backend",
 			"missing-delimiter",
 			"=empty-key",
@@ -110,7 +110,7 @@ func TestParseMetadataFilters(t *testing.T) {
 		assert.Equal(t, map[string]string{
 			"team":   "backend",
 			"region": "us-east-1",
-		}, metadata)
+		}, values)
 		assert.Equal(t, []string{
 			"missing-delimiter",
 			"=empty-key",

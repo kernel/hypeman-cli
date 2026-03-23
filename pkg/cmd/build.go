@@ -85,6 +85,10 @@ Examples:
 			Name:  "memory",
 			Usage: "Memory limit for builder VM in MB (default 2048)",
 		},
+		&cli.StringSliceFlag{
+			Name:  "tag",
+			Usage: "Set build tag key-value pair (KEY=VALUE, can be repeated)",
+		},
 	},
 	Commands: []*cli.Command{
 		&buildListCmd,
@@ -185,6 +189,17 @@ func handleBuild(ctx context.Context, cmd *cli.Command) error {
 	}
 	if cmd.IsSet("memory") {
 		params.MemoryMB = hypeman.Opt(int64(cmd.Int("memory")))
+	}
+	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
+	for _, malformed := range malformedTags {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
+	}
+	if len(tags) > 0 {
+		tagsJSON, err := marshalStringMap(tags)
+		if err != nil {
+			return fmt.Errorf("failed to encode tags: %w", err)
+		}
+		params.Tags = hypeman.Opt(tagsJSON)
 	}
 
 	// Start build
@@ -359,24 +374,28 @@ var buildListCmd = cli.Command{
 			Aliases: []string{"q"},
 			Usage:   "Only display build IDs",
 		},
+		&cli.StringSliceFlag{
+			Name:  "tag",
+			Usage: "Filter by tag key-value pair (KEY=VALUE, can be repeated)",
+		},
 	},
 	Action:          handleBuildList,
 	HideHelpCommand: true,
 }
 
 var buildGetCmd = cli.Command{
-	Name:      "get",
-	Usage:     "Get build details",
-	ArgsUsage: "<id>",
-	Action:    handleBuildGet,
+	Name:            "get",
+	Usage:           "Get build details",
+	ArgsUsage:       "<id>",
+	Action:          handleBuildGet,
 	HideHelpCommand: true,
 }
 
 var buildCancelCmd = cli.Command{
-	Name:      "cancel",
-	Usage:     "Cancel a build",
-	ArgsUsage: "<id>",
-	Action:    handleBuildCancel,
+	Name:            "cancel",
+	Usage:           "Cancel a build",
+	ArgsUsage:       "<id>",
+	Action:          handleBuildCancel,
 	HideHelpCommand: true,
 }
 
@@ -390,11 +409,19 @@ func handleBuildList(ctx context.Context, cmd *cli.Command) error {
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
+	params := hypeman.BuildListParams{}
+	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
+	for _, malformed := range malformedTags {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag filter: %s\n", malformed)
+	}
+	if len(tags) > 0 {
+		params.Tags = tags
+	}
 
 	if format != "auto" {
 		var res []byte
 		opts = append(opts, option.WithResponseBodyInto(&res))
-		_, err := client.Builds.List(ctx, opts...)
+		_, err := client.Builds.List(ctx, params, opts...)
 		if err != nil {
 			return err
 		}
@@ -402,7 +429,7 @@ func handleBuildList(ctx context.Context, cmd *cli.Command) error {
 		return ShowJSON(os.Stdout, "build list", obj, format, transform)
 	}
 
-	builds, err := client.Builds.List(ctx, opts...)
+	builds, err := client.Builds.List(ctx, params, opts...)
 	if err != nil {
 		return err
 	}

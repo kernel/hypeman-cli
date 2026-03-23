@@ -18,7 +18,7 @@ import (
 type TableWriter struct {
 	w       io.Writer
 	headers []string
-	widths  []int    // natural widths (max of header and cell values)
+	widths  []int // natural widths (max of header and cell values)
 	rows    [][]string
 
 	// TruncOrder specifies column indices in truncation priority order.
@@ -297,4 +297,3 @@ func ResolveInstance(ctx context.Context, client *hypeman.Client, identifier str
 		return "", fmt.Errorf("ambiguous instance identifier %q matches: %s", identifier, strings.Join(ids, ", "))
 	}
 }
-

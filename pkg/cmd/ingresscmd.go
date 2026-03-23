@@ -58,6 +58,10 @@ var ingressCreateCmd = cli.Command{
 			Name:  "name",
 			Usage: "Ingress name (auto-generated from hostname if not provided)",
 		},
+		&cli.StringSliceFlag{
+			Name:  "tag",
+			Usage: "Set ingress tag key-value pair (KEY=VALUE, can be repeated)",
+		},
 	},
 	Action:          handleIngressCreate,
 	HideHelpCommand: true,
@@ -72,16 +76,20 @@ var ingressListCmd = cli.Command{
 			Aliases: []string{"q"},
 			Usage:   "Only display ingress IDs",
 		},
+		&cli.StringSliceFlag{
+			Name:  "tag",
+			Usage: "Filter by tag key-value pair (KEY=VALUE, can be repeated)",
+		},
 	},
 	Action:          handleIngressList,
 	HideHelpCommand: true,
 }
 
 var ingressGetCmd = cli.Command{
-	Name:      "get",
-	Usage:     "Get ingress details",
-	ArgsUsage: "<id>",
-	Action:    handleIngressGet,
+	Name:            "get",
+	Usage:           "Get ingress details",
+	ArgsUsage:       "<id>",
+	Action:          handleIngressGet,
 	HideHelpCommand: true,
 }
 
@@ -136,6 +144,13 @@ func handleIngressCreate(ctx context.Context, cmd *cli.Command) error {
 			},
 		},
 	}
+	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
+	for _, malformed := range malformedTags {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
+	}
+	if len(tags) > 0 {
+		params.Tags = tags
+	}
 
 	fmt.Fprintf(os.Stderr, "Creating ingress %s...\n", name)
 
@@ -158,12 +173,20 @@ func handleIngressList(ctx context.Context, cmd *cli.Command) error {
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
+	params := hypeman.IngressListParams{}
+	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
+	for _, malformed := range malformedTags {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag filter: %s\n", malformed)
+	}
+	if len(tags) > 0 {
+		params.Tags = tags
+	}
 
 	// If a specific format is requested (not "auto"), output in that format
 	if format != "auto" {
 		var res []byte
 		opts = append(opts, option.WithResponseBodyInto(&res))
-		_, err := client.Ingresses.List(ctx, opts...)
+		_, err := client.Ingresses.List(ctx, params, opts...)
 		if err != nil {
 			return err
 		}
@@ -171,7 +194,7 @@ func handleIngressList(ctx context.Context, cmd *cli.Command) error {
 		return ShowJSON(os.Stdout, "ingress list", obj, format, transform)
 	}
 
-	ingresses, err := client.Ingresses.List(ctx, opts...)
+	ingresses, err := client.Ingresses.List(ctx, params, opts...)
 	if err != nil {
 		return err
 	}
