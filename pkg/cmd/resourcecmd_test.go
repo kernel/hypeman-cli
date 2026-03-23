@@ -4,7 +4,38 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestParseReclaimBytes(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected int64
+		wantErr  string
+	}{
+		{name: "raw bytes", input: "1048576", expected: 1048576},
+		{name: "megabytes", input: "512MB", expected: 512 * 1024 * 1024},
+		{name: "gigabytes with space", input: "2 GB", expected: 2 * 1024 * 1024 * 1024},
+		{name: "empty", input: "", wantErr: "reclaim-bytes is required"},
+		{name: "zero", input: "0", wantErr: "reclaim-bytes must be greater than 0"},
+		{name: "invalid", input: "nope", wantErr: "invalid reclaim-bytes \"nope\""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseReclaimBytes(tt.input)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
 
 func TestFormatBytes(t *testing.T) {
 	tests := []struct {

@@ -3,9 +3,11 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
 	"github.com/tidwall/gjson"
@@ -39,10 +41,15 @@ Examples:
 var resourcesReclaimMemoryCmd = cli.Command{
 	Name:  "reclaim-memory",
 	Usage: "Request guest memory reclaim from reclaim-eligible instances",
+	Description: `Request guest memory reclaim across eligible instances.
+
+Examples:
+  hypeman resources reclaim-memory --reclaim-bytes 512MB --dry-run
+  hypeman resources reclaim-memory --reclaim-bytes 1073741824 --hold-for 10m --reason "pack host before launch"`,
 	Flags: []cli.Flag{
-		&cli.Int64Flag{
+		&cli.StringFlag{
 			Name:     "reclaim-bytes",
-			Usage:    "Total bytes of guest memory to reclaim across eligible VMs",
+			Usage:    `Total guest memory to reclaim (e.g., "512MB", "2GB", or "1048576" for raw bytes)`,
 			Required: true,
 		},
 		&cli.BoolFlag{
@@ -93,9 +100,9 @@ func handleResources(ctx context.Context, cmd *cli.Command) error {
 func handleResourcesReclaimMemory(ctx context.Context, cmd *cli.Command) error {
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 
-	reclaimBytes := cmd.Int64("reclaim-bytes")
-	if reclaimBytes <= 0 {
-		return fmt.Errorf("reclaim-bytes must be greater than 0")
+	reclaimBytes, err := parseReclaimBytes(cmd.String("reclaim-bytes"))
+	if err != nil {
+		return err
 	}
 
 	request := hypeman.MemoryReclaimRequestParam{
@@ -122,7 +129,7 @@ func handleResourcesReclaimMemory(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	opts = append(opts, option.WithResponseBodyInto(&res))
-	_, err := client.Resources.ReclaimMemory(ctx, params, opts...)
+	_, err = client.Resources.ReclaimMemory(ctx, params, opts...)
 	if err != nil {
 		return err
 	}
@@ -141,6 +148,25 @@ func handleResourcesReclaimMemory(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return ShowJSON(os.Stdout, "resources reclaim-memory", obj, format, transform)
+}
+
+func parseReclaimBytes(raw string) (int64, error) {
+	if raw == "" {
+		return 0, fmt.Errorf("reclaim-bytes is required")
+	}
+
+	var size datasize.ByteSize
+	if err := size.UnmarshalText([]byte(raw)); err != nil {
+		return 0, fmt.Errorf("invalid reclaim-bytes %q: %w", raw, err)
+	}
+	if size == 0 {
+		return 0, fmt.Errorf("reclaim-bytes must be greater than 0")
+	}
+	if size.Bytes() > math.MaxInt64 {
+		return 0, fmt.Errorf("reclaim-bytes %q exceeds the maximum supported size", raw)
+	}
+
+	return int64(size.Bytes()), nil
 }
 
 func showResourcesTable(data []byte) error {

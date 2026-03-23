@@ -7,13 +7,15 @@ import (
 
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
+	"github.com/tidwall/gjson"
 	"github.com/urfave/cli/v3"
 )
 
 var pullCmd = cli.Command{
 	Name:            "pull",
-	Usage:           "Pull an image from a registry",
+	Usage:           "Alias for `image create`",
 	ArgsUsage:       "<image>",
+	Flags:           imageCreateFlags(),
 	Action:          handlePull,
 	HideHelpCommand: true,
 }
@@ -25,25 +27,35 @@ func handlePull(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	image := args[0]
-
-	fmt.Fprintf(os.Stderr, "Pulling %s...\n", image)
+	params, malformedTags := buildImageNewParams(image, cmd.StringSlice("tag"))
+	for _, malformed := range malformedTags {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
+	}
 
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
-
-	params := hypeman.ImageNewParams{
-		Name: image,
-	}
 
 	var opts []option.RequestOption
 	if cmd.Root().Bool("debug") {
 		opts = append(opts, debugMiddlewareOption)
 	}
 
-	result, err := client.Images.New(
-		ctx,
-		params,
-		opts...,
-	)
+	format := cmd.Root().String("format")
+	transform := cmd.Root().String("transform")
+
+	if format != "auto" {
+		var res []byte
+		opts = append(opts, option.WithResponseBodyInto(&res))
+		_, err := client.Images.New(ctx, params, opts...)
+		if err != nil {
+			return err
+		}
+		obj := gjson.ParseBytes(res)
+		return ShowJSON(os.Stdout, "pull", obj, format, transform)
+	}
+
+	fmt.Fprintf(os.Stderr, "Pulling %s...\n", image)
+
+	result, err := client.Images.New(ctx, params, opts...)
 	if err != nil {
 		return err
 	}

@@ -25,15 +25,10 @@ var imageCmd = cli.Command{
 }
 
 var imageCreateCmd = cli.Command{
-	Name:      "create",
-	Usage:     "Pull and convert an OCI image",
-	ArgsUsage: "<name>",
-	Flags: []cli.Flag{
-		&cli.StringSliceFlag{
-			Name:  "tag",
-			Usage: "Set image tag key-value pair (KEY=VALUE, can be repeated)",
-		},
-	},
+	Name:            "create",
+	Usage:           "Pull and convert an OCI image",
+	ArgsUsage:       "<name>",
+	Flags:           imageCreateFlags(),
 	Action:          handleImageCreate,
 	HideHelpCommand: true,
 }
@@ -149,23 +144,20 @@ func handleImageList(ctx context.Context, cmd *cli.Command) error {
 }
 
 func handleImageCreate(ctx context.Context, cmd *cli.Command) error {
+	return handleImageCreateLike(ctx, cmd, "hypeman image create <name>", "image create")
+}
+
+func handleImageCreateLike(ctx context.Context, cmd *cli.Command, usageLine, outputLabel string) error {
 	args := cmd.Args().Slice()
 	if len(args) < 1 {
-		return fmt.Errorf("image name required\nUsage: hypeman image create <name>")
+		return fmt.Errorf("image name required\nUsage: %s", usageLine)
 	}
 
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 
-	params := hypeman.ImageNewParams{
-		Name: args[0],
-	}
-
-	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
+	params, malformedTags := buildImageNewParams(args[0], cmd.StringSlice("tag"))
 	for _, malformed := range malformedTags {
 		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
-	}
-	if len(tags) > 0 {
-		params.Tags = tags
 	}
 
 	var opts []option.RequestOption
@@ -184,7 +176,7 @@ func handleImageCreate(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		obj := gjson.ParseBytes(res)
-		return ShowJSON(os.Stdout, "image create", obj, format, transform)
+		return ShowJSON(os.Stdout, outputLabel, obj, format, transform)
 	}
 
 	result, err := client.Images.New(ctx, params, opts...)
@@ -193,6 +185,26 @@ func handleImageCreate(ctx context.Context, cmd *cli.Command) error {
 	}
 	fmt.Println(result.Name)
 	return nil
+}
+
+func imageCreateFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringSliceFlag{
+			Name:  "tag",
+			Usage: "Set image tag key-value pair (KEY=VALUE, can be repeated)",
+		},
+	}
+}
+
+func buildImageNewParams(name string, tagSpecs []string) (hypeman.ImageNewParams, []string) {
+	params := hypeman.ImageNewParams{Name: name}
+
+	tags, malformedTags := parseKeyValueSpecs(tagSpecs)
+	if len(tags) > 0 {
+		params.Tags = tags
+	}
+
+	return params, malformedTags
 }
 
 func handleImageGet(ctx context.Context, cmd *cli.Command) error {
