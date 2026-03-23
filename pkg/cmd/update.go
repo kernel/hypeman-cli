@@ -12,14 +12,27 @@ import (
 )
 
 var updateCmd = cli.Command{
-	Name:      "update",
-	Usage:     "Update mutable instance configuration",
+	Name:  "update",
+	Usage: "Update specific mutable instance configuration",
+	Description: `Update mutable instance settings that have dedicated update flows.
+
+Currently supported:
+  hypeman update egress-credentials <instance> --env KEY=VALUE`,
+	Commands: []*cli.Command{
+		&updateEgressCredentialsCmd,
+	},
+	HideHelpCommand: true,
+}
+
+var updateEgressCredentialsCmd = cli.Command{
+	Name:      "egress-credentials",
+	Usage:     "Rotate env-backed credentials for existing mediated egress bindings",
 	ArgsUsage: "<instance>",
 	Flags: []cli.Flag{
 		&cli.StringSliceFlag{
 			Name:    "env",
 			Aliases: []string{"e"},
-			Usage:   "Update environment variable (KEY=VALUE, can be repeated)",
+			Usage:   "Update a bound credential env value (KEY=VALUE, can be repeated)",
 		},
 	},
 	Action:          handleUpdate,
@@ -29,7 +42,7 @@ var updateCmd = cli.Command{
 func handleUpdate(ctx context.Context, cmd *cli.Command) error {
 	args := cmd.Args().Slice()
 	if len(args) < 1 {
-		return fmt.Errorf("instance ID or name required\nUsage: hypeman update <instance> --env KEY=VALUE")
+		return fmt.Errorf("instance ID or name required\nUsage: hypeman update egress-credentials <instance> --env KEY=VALUE")
 	}
 
 	env, malformed := parseKeyValueSpecs(cmd.StringSlice("env"))
@@ -37,7 +50,7 @@ func handleUpdate(ctx context.Context, cmd *cli.Command) error {
 		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed env entry: %s\n", invalid)
 	}
 	if len(env) == 0 {
-		return fmt.Errorf("at least one --env KEY=VALUE entry is required")
+		return fmt.Errorf("at least one bound credential --env KEY=VALUE entry is required")
 	}
 
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
@@ -66,7 +79,7 @@ func handleUpdate(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		obj := gjson.ParseBytes(res)
-		return ShowJSON(os.Stdout, "instance update", obj, format, transform)
+		return ShowJSON(os.Stdout, "instance update egress-credentials", obj, format, transform)
 	}
 
 	instance, err := client.Instances.Update(ctx, instanceID, params, opts...)
