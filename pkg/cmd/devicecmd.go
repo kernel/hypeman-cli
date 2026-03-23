@@ -77,14 +77,24 @@ Examples:
 			Name:  "name",
 			Usage: "Optional name for the device (auto-generated if not provided)",
 		},
+		&cli.StringSliceFlag{
+			Name:  "tag",
+			Usage: "Set device tag key-value pair (KEY=VALUE, can be repeated)",
+		},
 	},
 	Action:          handleDeviceRegister,
 	HideHelpCommand: true,
 }
 
 var deviceListCmd = cli.Command{
-	Name:            "list",
-	Usage:           "List registered devices",
+	Name:  "list",
+	Usage: "List registered devices",
+	Flags: []cli.Flag{
+		&cli.StringSliceFlag{
+			Name:  "tag",
+			Usage: "Filter by tag key-value pair (KEY=VALUE, can be repeated)",
+		},
+	},
 	Action:          handleDeviceList,
 	HideHelpCommand: true,
 }
@@ -208,6 +218,13 @@ func handleDeviceRegister(ctx context.Context, cmd *cli.Command) error {
 	if name := cmd.String("name"); name != "" {
 		params.Name = hypeman.Opt(name)
 	}
+	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
+	for _, malformed := range malformedTags {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
+	}
+	if len(tags) > 0 {
+		params.Tags = tags
+	}
 
 	var opts []option.RequestOption
 	if cmd.Root().Bool("debug") {
@@ -244,7 +261,15 @@ func handleDeviceList(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	opts = append(opts, option.WithResponseBodyInto(&res))
-	_, err := client.Devices.List(ctx, opts...)
+	params := hypeman.DeviceListParams{}
+	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
+	for _, malformed := range malformedTags {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag filter: %s\n", malformed)
+	}
+	if len(tags) > 0 {
+		params.Tags = tags
+	}
+	_, err := client.Devices.List(ctx, params, opts...)
 	if err != nil {
 		return err
 	}

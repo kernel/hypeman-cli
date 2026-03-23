@@ -535,7 +535,6 @@ func copyDirContentsToInstance(ctx context.Context, baseURL, apiKey, instanceID,
 	return nil
 }
 
-
 // createDirOnInstanceWithUidGid creates a directory on the instance with explicit uid/gid
 func createDirOnInstanceWithUidGid(ctx context.Context, baseURL, apiKey, instanceID, dstPath string, mode fs.FileMode, uid, gid uint32) error {
 	wsURL, err := buildCpWsURL(baseURL, instanceID)
@@ -980,5 +979,3 @@ func copyFromInstanceToStdout(ctx context.Context, baseURL, apiKey, instanceID, 
 	}
 	return nil
 }
-
-

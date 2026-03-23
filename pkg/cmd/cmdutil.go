@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -36,6 +37,30 @@ func getDefaultRequestOptions(cmd *cli.Command) []option.RequestOption {
 	}
 
 	return opts
+}
+
+func parseKeyValueSpecs(specs []string) (map[string]string, []string) {
+	values := make(map[string]string)
+	var malformed []string
+
+	for _, spec := range specs {
+		parts := strings.SplitN(spec, "=", 2)
+		if len(parts) != 2 || parts[0] == "" {
+			malformed = append(malformed, spec)
+			continue
+		}
+		values[parts[0]] = parts[1]
+	}
+
+	return values, malformed
+}
+
+func marshalStringMap(input map[string]string) (string, error) {
+	payload, err := json.Marshal(input)
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
 }
 
 var debugMiddlewareOption = option.WithMiddleware(

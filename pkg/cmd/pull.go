@@ -11,10 +11,10 @@ import (
 )
 
 var pullCmd = cli.Command{
-	Name:      "pull",
-	Usage:     "Pull an image from a registry",
-	ArgsUsage: "<image>",
-	Action:    handlePull,
+	Name:            "pull",
+	Usage:           "Pull an image from a registry",
+	ArgsUsage:       "<image>",
+	Action:          handlePull,
 	HideHelpCommand: true,
 }
 
@@ -56,4 +56,3 @@ func handlePull(ctx context.Context, cmd *cli.Command) error {
 
 	return nil
 }
-

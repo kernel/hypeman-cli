@@ -7,6 +7,7 @@ import (
 
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
+	"github.com/kernel/hypeman-go/shared"
 	"github.com/urfave/cli/v3"
 )
 
@@ -37,9 +38,23 @@ var startCmd = cli.Command{
 }
 
 var standbyCmd = cli.Command{
-	Name:            "standby",
-	Usage:           "Put an instance into standby (pause and snapshot)",
-	ArgsUsage:       "<instance>",
+	Name:      "standby",
+	Usage:     "Put an instance into standby (pause and snapshot)",
+	ArgsUsage: "<instance>",
+	Flags: []cli.Flag{
+		&cli.BoolFlag{
+			Name:  "compression-enabled",
+			Usage: "Enable memory compression for this standby operation",
+		},
+		&cli.StringFlag{
+			Name:  "compression-algorithm",
+			Usage: `Compression algorithm: "zstd" or "lz4"`,
+		},
+		&cli.IntFlag{
+			Name:  "compression-level",
+			Usage: "Compression level (zstd: 1-19, lz4: 0-9)",
+		},
+	},
 	Action:          handleStandby,
 	HideHelpCommand: true,
 }
@@ -137,9 +152,33 @@ func handleStandby(ctx context.Context, cmd *cli.Command) error {
 		opts = append(opts, debugMiddlewareOption)
 	}
 
+	params := hypeman.InstanceStandbyParams{}
+	if cmd.IsSet("compression-enabled") || cmd.IsSet("compression-algorithm") || cmd.IsSet("compression-level") {
+		compression := shared.SnapshotCompressionConfigParam{
+			Enabled: cmd.Bool("compression-enabled"),
+		}
+		if !cmd.IsSet("compression-enabled") {
+			compression.Enabled = true
+		}
+		if cmd.IsSet("compression-level") {
+			compression.Level = hypeman.Opt(int64(cmd.Int("compression-level")))
+		}
+		if algorithm := cmd.String("compression-algorithm"); algorithm != "" {
+			switch algorithm {
+			case "zstd":
+				compression.Algorithm = shared.SnapshotCompressionConfigAlgorithmZstd
+			case "lz4":
+				compression.Algorithm = shared.SnapshotCompressionConfigAlgorithmLz4
+			default:
+				return fmt.Errorf("invalid compression algorithm: %s (must be 'zstd' or 'lz4')", algorithm)
+			}
+		}
+		params.Compression = compression
+	}
+
 	fmt.Fprintf(os.Stderr, "Putting %s into standby...\n", args[0])
 
-	instance, err := client.Instances.Standby(ctx, instanceID, opts...)
+	instance, err := client.Instances.Standby(ctx, instanceID, params, opts...)
 	if err != nil {
 		return err
 	}

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
+	"github.com/kernel/hypeman-go/shared"
 	"github.com/urfave/cli/v3"
 )
 
@@ -46,6 +48,10 @@ Examples:
 			Name:    "env",
 			Aliases: []string{"e"},
 			Usage:   "Set environment variable (KEY=VALUE, can be repeated)",
+		},
+		&cli.StringFlag{
+			Name:  "credentials-json",
+			Usage: "Credential policy map as JSON (keyed by guest-visible env var)",
 		},
 		&cli.StringFlag{
 			Name:  "memory",
@@ -99,6 +105,14 @@ Examples:
 			Name:  "bandwidth-up",
 			Usage: `Upload bandwidth limit (e.g., "1Gbps", "125MB/s")`,
 		},
+		&cli.BoolFlag{
+			Name:  "network-egress-enabled",
+			Usage: "Enable host-mediated outbound egress policy",
+		},
+		&cli.StringFlag{
+			Name:  "network-egress-mode",
+			Usage: `Egress enforcement mode: "all" or "http_https_only"`,
+		},
 		// Boot option flags
 		&cli.BoolFlag{
 			Name:  "skip-guest-agent",
@@ -107,6 +121,18 @@ Examples:
 		&cli.BoolFlag{
 			Name:  "skip-kernel-headers",
 			Usage: "Skip kernel headers installation during boot for faster startup (DKMS will not work)",
+		},
+		&cli.BoolFlag{
+			Name:  "snapshot-compression-enabled",
+			Usage: "Enable snapshot memory compression for this instance policy",
+		},
+		&cli.StringFlag{
+			Name:  "snapshot-compression-algorithm",
+			Usage: `Snapshot compression algorithm: "zstd" or "lz4"`,
+		},
+		&cli.IntFlag{
+			Name:  "snapshot-compression-level",
+			Usage: "Snapshot compression level (zstd: 1-19, lz4: 0-9)",
 		},
 		// Entrypoint and CMD overrides
 		&cli.StringSliceFlag{
@@ -119,9 +145,9 @@ Examples:
 		},
 		// Metadata flags
 		&cli.StringSliceFlag{
-			Name:    "metadata",
-			Aliases: []string{"l"},
-			Usage:   "Set metadata key-value pair (KEY=VALUE, can be repeated)",
+			Name:    "tag",
+			Aliases: []string{"metadata", "l"},
+			Usage:   "Set tag key-value pair (KEY=VALUE, can be repeated)",
 		},
 		// Volume mount flags
 		&cli.StringSliceFlag{
@@ -198,13 +224,22 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 	if len(env) > 0 {
 		params.Env = env
 	}
+	if rawCredentials := cmd.String("credentials-json"); rawCredentials != "" {
+		credentials := map[string]hypeman.InstanceNewParamsCredential{}
+		if err := json.Unmarshal([]byte(rawCredentials), &credentials); err != nil {
+			return fmt.Errorf("invalid credentials-json: %w", err)
+		}
+		params.Credentials = credentials
+	}
 
 	// Network configuration
 	networkEnabled := cmd.Bool("network")
 	bandwidthDown := cmd.String("bandwidth-down")
 	bandwidthUp := cmd.String("bandwidth-up")
+	egressEnabledSet := cmd.IsSet("network-egress-enabled")
+	egressMode := cmd.String("network-egress-mode")
 
-	if !networkEnabled || bandwidthDown != "" || bandwidthUp != "" {
+	if !networkEnabled || bandwidthDown != "" || bandwidthUp != "" || egressEnabledSet || egressMode != "" {
 		params.Network = hypeman.InstanceNewParamsNetwork{
 			Enabled: hypeman.Opt(networkEnabled),
 		}
@@ -213,6 +248,22 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 		}
 		if bandwidthUp != "" {
 			params.Network.BandwidthUpload = hypeman.Opt(bandwidthUp)
+		}
+		if egressEnabledSet || egressMode != "" {
+			params.Network.Egress = hypeman.InstanceNewParamsNetworkEgress{}
+			if egressEnabledSet {
+				params.Network.Egress.Enabled = hypeman.Opt(cmd.Bool("network-egress-enabled"))
+			}
+			if egressMode != "" {
+				switch egressMode {
+				case "all", "http_https_only":
+					params.Network.Egress.Enforcement = hypeman.InstanceNewParamsNetworkEgressEnforcement{
+						Mode: egressMode,
+					}
+				default:
+					return fmt.Errorf("invalid network-egress-mode: %s (must be 'all' or 'http_https_only')", egressMode)
+				}
+			}
 		}
 	}
 
@@ -269,19 +320,42 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 		params.Cmd = cmdArgs
 	}
 
-	// Metadata
-	metadataSpecs := cmd.StringSlice("metadata")
-	if len(metadataSpecs) > 0 {
-		metadata := make(map[string]string)
-		for _, m := range metadataSpecs {
-			parts := strings.SplitN(m, "=", 2)
-			if len(parts) == 2 {
-				metadata[parts[0]] = parts[1]
-			} else {
-				fmt.Fprintf(os.Stderr, "Warning: ignoring malformed metadata: %s\n", m)
+	// Tags
+	tagSpecs := cmd.StringSlice("tag")
+	if len(tagSpecs) > 0 {
+		tags, malformed := parseKeyValueSpecs(tagSpecs)
+		for _, invalid := range malformed {
+			fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", invalid)
+		}
+		if len(tags) > 0 {
+			params.Tags = tags
+		}
+	}
+
+	// Snapshot policy compression
+	if cmd.IsSet("snapshot-compression-enabled") || cmd.IsSet("snapshot-compression-algorithm") || cmd.IsSet("snapshot-compression-level") {
+		compression := shared.SnapshotCompressionConfigParam{
+			Enabled: cmd.Bool("snapshot-compression-enabled"),
+		}
+		if !cmd.IsSet("snapshot-compression-enabled") {
+			compression.Enabled = true
+		}
+		if cmd.IsSet("snapshot-compression-level") {
+			compression.Level = hypeman.Opt(int64(cmd.Int("snapshot-compression-level")))
+		}
+		if algorithm := cmd.String("snapshot-compression-algorithm"); algorithm != "" {
+			switch algorithm {
+			case "zstd":
+				compression.Algorithm = shared.SnapshotCompressionConfigAlgorithmZstd
+			case "lz4":
+				compression.Algorithm = shared.SnapshotCompressionConfigAlgorithmLz4
+			default:
+				return fmt.Errorf("invalid snapshot compression algorithm: %s (must be 'zstd' or 'lz4')", algorithm)
 			}
 		}
-		params.Metadata = metadata
+		params.SnapshotPolicy = hypeman.SnapshotPolicyParam{
+			Compression: compression,
+		}
 	}
 
 	// Volume mounts

@@ -43,6 +43,10 @@ var volumeCreateCmd = cli.Command{
 			Name:  "id",
 			Usage: "Optional custom identifier (auto-generated if not provided)",
 		},
+		&cli.StringSliceFlag{
+			Name:  "tag",
+			Usage: "Set volume tag key-value pair (KEY=VALUE, can be repeated)",
+		},
 	},
 	Action:          handleVolumeCreate,
 	HideHelpCommand: true,
@@ -57,25 +61,29 @@ var volumeListCmd = cli.Command{
 			Aliases: []string{"q"},
 			Usage:   "Only display volume IDs",
 		},
+		&cli.StringSliceFlag{
+			Name:  "tag",
+			Usage: "Filter by tag key-value pair (KEY=VALUE, can be repeated)",
+		},
 	},
 	Action:          handleVolumeList,
 	HideHelpCommand: true,
 }
 
 var volumeGetCmd = cli.Command{
-	Name:      "get",
-	Usage:     "Get volume details",
-	ArgsUsage: "<id>",
-	Action:    handleVolumeGet,
+	Name:            "get",
+	Usage:           "Get volume details",
+	ArgsUsage:       "<id>",
+	Action:          handleVolumeGet,
 	HideHelpCommand: true,
 }
 
 var volumeDeleteCmd = cli.Command{
-	Name:      "delete",
-	Aliases:   []string{"rm"},
-	Usage:     "Delete a volume",
-	ArgsUsage: "<id>",
-	Action:    handleVolumeDelete,
+	Name:            "delete",
+	Aliases:         []string{"rm"},
+	Usage:           "Delete a volume",
+	ArgsUsage:       "<id>",
+	Action:          handleVolumeDelete,
 	HideHelpCommand: true,
 }
 
@@ -131,6 +139,13 @@ func handleVolumeCreate(ctx context.Context, cmd *cli.Command) error {
 	if id := cmd.String("id"); id != "" {
 		params.ID = hypeman.Opt(id)
 	}
+	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
+	for _, malformed := range malformedTags {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
+	}
+	if len(tags) > 0 {
+		params.Tags = tags
+	}
 
 	var opts []option.RequestOption
 	if cmd.Root().Bool("debug") {
@@ -167,11 +182,19 @@ func handleVolumeList(ctx context.Context, cmd *cli.Command) error {
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
+	params := hypeman.VolumeListParams{}
+	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
+	for _, malformed := range malformedTags {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag filter: %s\n", malformed)
+	}
+	if len(tags) > 0 {
+		params.Tags = tags
+	}
 
 	if format != "auto" {
 		var res []byte
 		opts = append(opts, option.WithResponseBodyInto(&res))
-		_, err := client.Volumes.List(ctx, opts...)
+		_, err := client.Volumes.List(ctx, params, opts...)
 		if err != nil {
 			return err
 		}
@@ -179,7 +202,7 @@ func handleVolumeList(ctx context.Context, cmd *cli.Command) error {
 		return ShowJSON(os.Stdout, "volume list", obj, format, transform)
 	}
 
-	volumes, err := client.Volumes.List(ctx, opts...)
+	volumes, err := client.Volumes.List(ctx, params, opts...)
 	if err != nil {
 		return err
 	}

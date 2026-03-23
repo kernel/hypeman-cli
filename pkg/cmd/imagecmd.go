@@ -16,10 +16,25 @@ var imageCmd = cli.Command{
 	Name:  "image",
 	Usage: "Manage images",
 	Commands: []*cli.Command{
+		&imageCreateCmd,
 		&imageListCmd,
 		&imageGetCmd,
 		&imageDeleteCmd,
 	},
+	HideHelpCommand: true,
+}
+
+var imageCreateCmd = cli.Command{
+	Name:      "create",
+	Usage:     "Pull and convert an OCI image",
+	ArgsUsage: "<name>",
+	Flags: []cli.Flag{
+		&cli.StringSliceFlag{
+			Name:  "tag",
+			Usage: "Set image tag key-value pair (KEY=VALUE, can be repeated)",
+		},
+	},
+	Action:          handleImageCreate,
 	HideHelpCommand: true,
 }
 
@@ -32,25 +47,29 @@ var imageListCmd = cli.Command{
 			Aliases: []string{"q"},
 			Usage:   "Only display image names",
 		},
+		&cli.StringSliceFlag{
+			Name:  "tag",
+			Usage: "Filter by tag key-value pair (KEY=VALUE, can be repeated)",
+		},
 	},
 	Action:          handleImageList,
 	HideHelpCommand: true,
 }
 
 var imageGetCmd = cli.Command{
-	Name:      "get",
-	Usage:     "Get image details",
-	ArgsUsage: "<name>",
-	Action:    handleImageGet,
+	Name:            "get",
+	Usage:           "Get image details",
+	ArgsUsage:       "<name>",
+	Action:          handleImageGet,
 	HideHelpCommand: true,
 }
 
 var imageDeleteCmd = cli.Command{
-	Name:      "delete",
-	Aliases:   []string{"rm"},
-	Usage:     "Delete an image",
-	ArgsUsage: "<name>",
-	Action:    handleImageDelete,
+	Name:            "delete",
+	Aliases:         []string{"rm"},
+	Usage:           "Delete an image",
+	ArgsUsage:       "<name>",
+	Action:          handleImageDelete,
 	HideHelpCommand: true,
 }
 
@@ -64,11 +83,19 @@ func handleImageList(ctx context.Context, cmd *cli.Command) error {
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
+	params := hypeman.ImageListParams{}
+	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
+	for _, malformed := range malformedTags {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag filter: %s\n", malformed)
+	}
+	if len(tags) > 0 {
+		params.Tags = tags
+	}
 
 	if format != "auto" {
 		var res []byte
 		opts = append(opts, option.WithResponseBodyInto(&res))
-		_, err := client.Images.List(ctx, opts...)
+		_, err := client.Images.List(ctx, params, opts...)
 		if err != nil {
 			return err
 		}
@@ -76,7 +103,7 @@ func handleImageList(ctx context.Context, cmd *cli.Command) error {
 		return ShowJSON(os.Stdout, "image list", obj, format, transform)
 	}
 
-	images, err := client.Images.List(ctx, opts...)
+	images, err := client.Images.List(ctx, params, opts...)
 	if err != nil {
 		return err
 	}
@@ -118,6 +145,53 @@ func handleImageList(ctx context.Context, cmd *cli.Command) error {
 	}
 	table.Render()
 
+	return nil
+}
+
+func handleImageCreate(ctx context.Context, cmd *cli.Command) error {
+	args := cmd.Args().Slice()
+	if len(args) < 1 {
+		return fmt.Errorf("image name required\nUsage: hypeman image create <name>")
+	}
+
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+
+	params := hypeman.ImageNewParams{
+		Name: args[0],
+	}
+
+	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
+	for _, malformed := range malformedTags {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
+	}
+	if len(tags) > 0 {
+		params.Tags = tags
+	}
+
+	var opts []option.RequestOption
+	if cmd.Root().Bool("debug") {
+		opts = append(opts, debugMiddlewareOption)
+	}
+
+	format := cmd.Root().String("format")
+	transform := cmd.Root().String("transform")
+
+	if format != "auto" {
+		var res []byte
+		opts = append(opts, option.WithResponseBodyInto(&res))
+		_, err := client.Images.New(ctx, params, opts...)
+		if err != nil {
+			return err
+		}
+		obj := gjson.ParseBytes(res)
+		return ShowJSON(os.Stdout, "image create", obj, format, transform)
+	}
+
+	result, err := client.Images.New(ctx, params, opts...)
+	if err != nil {
+		return err
+	}
+	fmt.Println(result.Name)
 	return nil
 }
 
