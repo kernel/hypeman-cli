@@ -13,8 +13,9 @@ import (
 )
 
 var ingressCmd = cli.Command{
-	Name:  "ingress",
-	Usage: "Manage ingresses",
+	Name:    "ingress",
+	Aliases: []string{"ingresses"},
+	Usage:   "Manage ingresses",
 	Commands: []*cli.Command{
 		&ingressCreateCmd,
 		&ingressListCmd,

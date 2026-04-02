@@ -18,6 +18,7 @@ import (
 
 var buildCmd = cli.Command{
 	Name:      "build",
+	Aliases:   []string{"builds"},
 	Usage:     "Build an image from a Dockerfile",
 	ArgsUsage: "[path]",
 	Description: `Build an image from a Dockerfile and source context.

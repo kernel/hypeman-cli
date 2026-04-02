@@ -12,8 +12,9 @@ import (
 )
 
 var volumeCmd = cli.Command{
-	Name:  "volume",
-	Usage: "Manage volumes",
+	Name:    "volume",
+	Aliases: []string{"volumes"},
+	Usage:   "Manage volumes",
 	Commands: []*cli.Command{
 		&volumeCreateCmd,
 		&volumeListCmd,
