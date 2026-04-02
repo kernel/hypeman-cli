@@ -14,8 +14,9 @@ import (
 )
 
 var snapshotCmd = cli.Command{
-	Name:  "snapshot",
-	Usage: "Manage instance snapshots",
+	Name:    "snapshot",
+	Aliases: []string{"snapshots"},
+	Usage:   "Manage instance snapshots",
 	Commands: []*cli.Command{
 		&snapshotCreateCmd,
 		&snapshotRestoreCmd,

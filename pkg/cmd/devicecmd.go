@@ -12,8 +12,9 @@ import (
 )
 
 var deviceCmd = cli.Command{
-	Name:  "device",
-	Usage: "Manage PCI/GPU devices for passthrough",
+	Name:    "device",
+	Aliases: []string{"devices"},
+	Usage:   "Manage PCI/GPU devices for passthrough",
 	Description: `Manage PCI devices for passthrough to virtual machines.
 
 This command allows you to discover available passthrough-capable devices,

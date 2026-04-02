@@ -13,8 +13,9 @@ import (
 )
 
 var imageCmd = cli.Command{
-	Name:  "image",
-	Usage: "Manage images",
+	Name:    "image",
+	Aliases: []string{"images"},
+	Usage:   "Manage images",
 	Commands: []*cli.Command{
 		&imageCreateCmd,
 		&imageListCmd,

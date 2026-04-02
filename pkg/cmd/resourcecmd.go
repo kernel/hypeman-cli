@@ -15,8 +15,9 @@ import (
 )
 
 var resourcesCmd = cli.Command{
-	Name:  "resources",
-	Usage: "Show server resource capacity and allocation status",
+	Name:    "resources",
+	Aliases: []string{"resource"},
+	Usage:   "Show server resource capacity and allocation status",
 	Description: `Display current host resource capacity, allocation status, and per-instance breakdown.
 
 Resources include CPU, memory, disk, network, and GPU (if available).
