@@ -17,10 +17,38 @@ var updateCmd = cli.Command{
 	Description: `Update mutable instance settings that have dedicated update flows.
 
 Currently supported:
+  hypeman update auto-standby <instance> --enabled --idle-timeout 10m
   hypeman update egress-credentials <instance> --env KEY=VALUE`,
 	Commands: []*cli.Command{
+		&updateAutoStandbyCmd,
 		&updateEgressCredentialsCmd,
 	},
+	HideHelpCommand: true,
+}
+
+var updateAutoStandbyCmd = cli.Command{
+	Name:      "auto-standby",
+	Usage:     "Update the auto-standby policy for an instance",
+	ArgsUsage: "<instance>",
+	Flags: []cli.Flag{
+		&cli.BoolFlag{
+			Name:  "enabled",
+			Usage: "Enable Linux-only automatic standby based on inbound TCP activity",
+		},
+		&cli.StringFlag{
+			Name:  "idle-timeout",
+			Usage: `How long the instance must be idle before entering standby (e.g., "10m")`,
+		},
+		&cli.StringSliceFlag{
+			Name:  "ignore-destination-port",
+			Usage: "TCP destination port that should not keep the instance awake (can be repeated)",
+		},
+		&cli.StringSliceFlag{
+			Name:  "ignore-source-cidr",
+			Usage: "Client CIDR that should not keep the instance awake (can be repeated)",
+		},
+	},
+	Action:          handleUpdateAutoStandby,
 	HideHelpCommand: true,
 }
 
@@ -37,6 +65,59 @@ var updateEgressCredentialsCmd = cli.Command{
 	},
 	Action:          handleUpdate,
 	HideHelpCommand: true,
+}
+
+func handleUpdateAutoStandby(ctx context.Context, cmd *cli.Command) error {
+	args := cmd.Args().Slice()
+	if len(args) < 1 {
+		return fmt.Errorf("instance ID or name required\nUsage: hypeman update auto-standby <instance> [flags]")
+	}
+
+	policy, policySet, err := buildAutoStandbyPolicy(cmd, "")
+	if err != nil {
+		return err
+	}
+	if !policySet {
+		return fmt.Errorf("at least one auto-standby flag is required")
+	}
+
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	instanceID, err := ResolveInstance(ctx, &client, args[0])
+	if err != nil {
+		return err
+	}
+
+	params := hypeman.InstanceUpdateParams{
+		AutoStandby: policy,
+	}
+
+	var opts []option.RequestOption
+	if cmd.Root().Bool("debug") {
+		opts = append(opts, debugMiddlewareOption)
+	}
+
+	format := cmd.Root().String("format")
+	transform := cmd.Root().String("transform")
+
+	if format != "auto" {
+		var res []byte
+		opts = append(opts, option.WithResponseBodyInto(&res))
+		_, err := client.Instances.Update(ctx, instanceID, params, opts...)
+		if err != nil {
+			return err
+		}
+		obj := gjson.ParseBytes(res)
+		return ShowJSON(os.Stdout, "update auto-standby", obj, format, transform)
+	}
+
+	fmt.Fprintf(os.Stderr, "Updating auto-standby for %s...\n", args[0])
+
+	instance, err := client.Instances.Update(ctx, instanceID, params, opts...)
+	if err != nil {
+		return err
+	}
+	fmt.Println(instance.ID)
+	return nil
 }
 
 func handleUpdate(ctx context.Context, cmd *cli.Command) error {
