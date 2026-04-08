@@ -113,6 +113,22 @@ Examples:
 			Name:  "network-egress-mode",
 			Usage: `Egress enforcement mode: "all" or "http_https_only"`,
 		},
+		&cli.BoolFlag{
+			Name:  "auto-standby-enabled",
+			Usage: "Enable Linux-only automatic standby based on inbound TCP activity",
+		},
+		&cli.StringFlag{
+			Name:  "auto-standby-idle-timeout",
+			Usage: `How long the instance must be idle before entering standby (e.g., "10m")`,
+		},
+		&cli.StringSliceFlag{
+			Name:  "auto-standby-ignore-destination-port",
+			Usage: "TCP destination port that should not keep the instance awake (can be repeated)",
+		},
+		&cli.StringSliceFlag{
+			Name:  "auto-standby-ignore-source-cidr",
+			Usage: "Client CIDR that should not keep the instance awake (can be repeated)",
+		},
 		// Boot option flags
 		&cli.BoolFlag{
 			Name:  "skip-guest-agent",
@@ -230,6 +246,13 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 			return fmt.Errorf("invalid credentials-json: %w", err)
 		}
 		params.Credentials = credentials
+	}
+	autoStandbyPolicy, autoStandbySet, err := buildAutoStandbyPolicy(cmd, "auto-standby-")
+	if err != nil {
+		return err
+	}
+	if autoStandbySet {
+		params.AutoStandby = autoStandbyPolicy
 	}
 
 	// Network configuration

@@ -20,6 +20,7 @@ var snapshotCmd = cli.Command{
 	Commands: []*cli.Command{
 		&snapshotCreateCmd,
 		&snapshotRestoreCmd,
+		&snapshotScheduleCmd,
 		&snapshotListCmd,
 		&snapshotGetCmd,
 		&snapshotDeleteCmd,
