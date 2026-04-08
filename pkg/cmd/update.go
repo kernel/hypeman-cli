@@ -107,8 +107,10 @@ func handleUpdateAutoStandby(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		obj := gjson.ParseBytes(res)
-		return ShowJSON(os.Stdout, "instance update auto-standby", obj, format, transform)
+		return ShowJSON(os.Stdout, "update auto-standby", obj, format, transform)
 	}
+
+	fmt.Fprintf(os.Stderr, "Updating auto-standby for %s...\n", args[0])
 
 	instance, err := client.Instances.Update(ctx, instanceID, params, opts...)
 	if err != nil {
