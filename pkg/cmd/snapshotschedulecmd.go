@@ -108,7 +108,15 @@ func handleSnapshotScheduleSet(ctx context.Context, cmd *cli.Command) error {
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
-	return ShowJSON(os.Stdout, "snapshot schedule set", gjson.ParseBytes(res), format, transform)
+
+	obj := gjson.ParseBytes(res)
+
+	if format == "auto" {
+		printSnapshotScheduleSummary(obj)
+		return nil
+	}
+
+	return ShowJSON(os.Stdout, "snapshot schedule set", obj, format, transform)
 }
 
 func handleSnapshotScheduleGet(ctx context.Context, cmd *cli.Command) error {
@@ -137,7 +145,15 @@ func handleSnapshotScheduleGet(ctx context.Context, cmd *cli.Command) error {
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
-	return ShowJSON(os.Stdout, "snapshot schedule get", gjson.ParseBytes(res), format, transform)
+
+	obj := gjson.ParseBytes(res)
+
+	if format == "auto" {
+		printSnapshotScheduleSummary(obj)
+		return nil
+	}
+
+	return ShowJSON(os.Stdout, "snapshot schedule get", obj, format, transform)
 }
 
 func handleSnapshotScheduleDelete(ctx context.Context, cmd *cli.Command) error {
@@ -191,4 +207,55 @@ func buildSnapshotScheduleRequest(cmd *cli.Command) (hypeman.SetSnapshotSchedule
 	}
 
 	return request, malformedMetadata, nil
+}
+
+func printSnapshotScheduleSummary(obj gjson.Result) {
+	instanceID := obj.Get("instance_id").String()
+	interval := obj.Get("interval").String()
+	maxAge := obj.Get("retention.max_age").String()
+	maxCount := obj.Get("retention.max_count").Int()
+	namePrefix := obj.Get("name_prefix").String()
+	nextRun := obj.Get("next_run_at").String()
+	createdAt := obj.Get("created_at").String()
+
+	if maxAge == "" {
+		maxAge = "-"
+	}
+	if namePrefix == "" {
+		namePrefix = "-"
+	}
+	if nextRun == "" {
+		nextRun = "-"
+	}
+
+	maxCountStr := "-"
+	if maxCount > 0 {
+		maxCountStr = fmt.Sprintf("%d", maxCount)
+	}
+
+	fmt.Printf("%-14s %s\n", "INSTANCE", instanceID)
+	fmt.Printf("%-14s %s\n", "INTERVAL", interval)
+	fmt.Printf("%-14s %s\n", "MAX AGE", maxAge)
+	fmt.Printf("%-14s %s\n", "MAX COUNT", maxCountStr)
+	fmt.Printf("%-14s %s\n", "PREFIX", namePrefix)
+	fmt.Printf("%-14s %s\n", "NEXT RUN", nextRun)
+	fmt.Printf("%-14s %s\n", "CREATED", createdAt)
+
+	metadata := obj.Get("metadata")
+	if metadata.Exists() && metadata.IsObject() {
+		fmt.Printf("%-14s", "METADATA")
+		first := true
+		metadata.ForEach(func(key, value gjson.Result) bool {
+			if first {
+				fmt.Printf(" %s=%s\n", key.String(), value.String())
+				first = false
+			} else {
+				fmt.Printf("%-14s %s=%s\n", "", key.String(), value.String())
+			}
+			return true
+		})
+		if first {
+			fmt.Println(" -")
+		}
+	}
 }

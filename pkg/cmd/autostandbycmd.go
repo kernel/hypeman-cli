@@ -57,7 +57,45 @@ func handleAutoStandbyStatus(ctx context.Context, cmd *cli.Command) error {
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
-	return ShowJSON(os.Stdout, "auto-standby status", gjson.ParseBytes(res), format, transform)
+
+	obj := gjson.ParseBytes(res)
+
+	if format == "auto" {
+		status := obj.Get("status").String()
+		enabled := obj.Get("enabled").Bool()
+		configured := obj.Get("configured").Bool()
+		supported := obj.Get("supported").Bool()
+		idleTimeout := obj.Get("idle_timeout").String()
+		reason := obj.Get("reason").String()
+		trackingMode := obj.Get("tracking_mode").String()
+		connections := obj.Get("active_inbound_connections").Int()
+
+		if idleTimeout == "" {
+			idleTimeout = "-"
+		}
+		if reason == "" {
+			reason = "-"
+		}
+
+		fmt.Printf("%-14s %s\n", "STATUS", status)
+		fmt.Printf("%-14s %t\n", "ENABLED", enabled)
+		fmt.Printf("%-14s %t\n", "CONFIGURED", configured)
+		fmt.Printf("%-14s %t\n", "SUPPORTED", supported)
+		fmt.Printf("%-14s %s\n", "IDLE TIMEOUT", idleTimeout)
+		fmt.Printf("%-14s %s\n", "REASON", reason)
+		fmt.Printf("%-14s %s\n", "TRACKING", trackingMode)
+		fmt.Printf("%-14s %d\n", "CONNECTIONS", connections)
+
+		if idleSince := obj.Get("idle_since").String(); idleSince != "" {
+			fmt.Printf("%-14s %s\n", "IDLE SINCE", idleSince)
+		}
+		if nextStandby := obj.Get("next_standby_at").String(); nextStandby != "" {
+			fmt.Printf("%-14s %s\n", "NEXT STANDBY", nextStandby)
+		}
+		return nil
+	}
+
+	return ShowJSON(os.Stdout, "auto-standby status", obj, format, transform)
 }
 
 func buildAutoStandbyPolicy(cmd *cli.Command, prefix string) (hypeman.AutoStandbyPolicyParam, bool, error) {

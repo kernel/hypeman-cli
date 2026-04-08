@@ -69,7 +69,28 @@ func handleWait(ctx context.Context, cmd *cli.Command) error {
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
-	return ShowJSON(os.Stdout, "instance wait", gjson.ParseBytes(res), format, transform)
+
+	obj := gjson.ParseBytes(res)
+
+	if format == "auto" {
+		state := obj.Get("state").String()
+		timedOut := obj.Get("timed_out").Bool()
+		stateError := obj.Get("state_error").String()
+
+		if timedOut {
+			fmt.Fprintf(os.Stderr, "Timed out waiting (last state: %s)\n", state)
+			return fmt.Errorf("timed out waiting for instance to reach state %s", cmd.String("state"))
+		}
+		if stateError != "" {
+			fmt.Printf("%-14s %s\n", "STATE", state)
+			fmt.Printf("%-14s %s\n", "STATE ERROR", stateError)
+		} else {
+			fmt.Println(state)
+		}
+		return nil
+	}
+
+	return ShowJSON(os.Stdout, "instance wait", obj, format, transform)
 }
 
 func parseInstanceWaitState(raw string) (hypeman.InstanceWaitParamsState, error) {
