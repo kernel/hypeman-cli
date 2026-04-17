@@ -47,6 +47,10 @@ var standbyCmd = cli.Command{
 			Usage: "Enable memory compression for this standby operation",
 		},
 		&cli.StringFlag{
+			Name:  "compression-delay",
+			Usage: `Delay before standby snapshot compression begins (e.g., "30s", "5m")`,
+		},
+		&cli.StringFlag{
 			Name:  "compression-algorithm",
 			Usage: `Compression algorithm: "zstd" or "lz4"`,
 		},
@@ -153,7 +157,12 @@ func handleStandby(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	params := hypeman.InstanceStandbyParams{}
-	if cmd.IsSet("compression-enabled") || cmd.IsSet("compression-algorithm") || cmd.IsSet("compression-level") {
+	if cmd.IsSet("compression-enabled") || cmd.IsSet("compression-delay") || cmd.IsSet("compression-algorithm") || cmd.IsSet("compression-level") {
+		request := hypeman.StandbyInstanceRequestParam{}
+		if delay := cmd.String("compression-delay"); delay != "" {
+			request.CompressionDelay = hypeman.Opt(delay)
+		}
+
 		compression := shared.SnapshotCompressionConfigParam{
 			Enabled: cmd.Bool("compression-enabled"),
 		}
@@ -170,7 +179,8 @@ func handleStandby(ctx context.Context, cmd *cli.Command) error {
 			}
 			compression.Algorithm = parsedAlgorithm
 		}
-		params.Compression = compression
+		request.Compression = compression
+		params.StandbyInstanceRequest = request
 	}
 
 	fmt.Fprintf(os.Stderr, "Putting %s into standby...\n", args[0])
