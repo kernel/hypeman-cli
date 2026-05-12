@@ -143,6 +143,10 @@ Examples:
 			Usage: "Enable snapshot memory compression for this instance policy",
 		},
 		&cli.StringFlag{
+			Name:  "snapshot-compression-delay",
+			Usage: `Delay before standby snapshot compression begins (e.g., "30s", "5m")`,
+		},
+		&cli.StringFlag{
 			Name:  "snapshot-compression-algorithm",
 			Usage: `Snapshot compression algorithm: "zstd" or "lz4"`,
 		},
@@ -347,26 +351,31 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	// Snapshot policy compression
-	if cmd.IsSet("snapshot-compression-enabled") || cmd.IsSet("snapshot-compression-algorithm") || cmd.IsSet("snapshot-compression-level") {
-		compression := shared.SnapshotCompressionConfigParam{
-			Enabled: cmd.Bool("snapshot-compression-enabled"),
+	if cmd.IsSet("snapshot-compression-enabled") || cmd.IsSet("snapshot-compression-delay") || cmd.IsSet("snapshot-compression-algorithm") || cmd.IsSet("snapshot-compression-level") {
+		policy := hypeman.SnapshotPolicyParam{}
+		if delay := cmd.String("snapshot-compression-delay"); delay != "" {
+			policy.StandbyCompressionDelay = hypeman.Opt(delay)
 		}
-		if !cmd.IsSet("snapshot-compression-enabled") {
-			compression.Enabled = true
-		}
-		if cmd.IsSet("snapshot-compression-level") {
-			compression.Level = hypeman.Opt(int64(cmd.Int("snapshot-compression-level")))
-		}
-		if algorithm := cmd.String("snapshot-compression-algorithm"); algorithm != "" {
-			parsedAlgorithm, err := parseSnapshotCompressionAlgorithm(algorithm)
-			if err != nil {
-				return fmt.Errorf("invalid snapshot compression algorithm: %w", err)
+		if cmd.IsSet("snapshot-compression-enabled") || cmd.IsSet("snapshot-compression-algorithm") || cmd.IsSet("snapshot-compression-level") {
+			compression := shared.SnapshotCompressionConfigParam{
+				Enabled: cmd.Bool("snapshot-compression-enabled"),
 			}
-			compression.Algorithm = parsedAlgorithm
+			if !cmd.IsSet("snapshot-compression-enabled") {
+				compression.Enabled = true
+			}
+			if cmd.IsSet("snapshot-compression-level") {
+				compression.Level = hypeman.Opt(int64(cmd.Int("snapshot-compression-level")))
+			}
+			if algorithm := cmd.String("snapshot-compression-algorithm"); algorithm != "" {
+				parsedAlgorithm, err := parseSnapshotCompressionAlgorithm(algorithm)
+				if err != nil {
+					return fmt.Errorf("invalid snapshot compression algorithm: %w", err)
+				}
+				compression.Algorithm = parsedAlgorithm
+			}
+			policy.Compression = compression
 		}
-		params.SnapshotPolicy = hypeman.SnapshotPolicyParam{
-			Compression: compression,
-		}
+		params.SnapshotPolicy = policy
 	}
 
 	// Volume mounts

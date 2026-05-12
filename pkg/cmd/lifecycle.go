@@ -47,6 +47,10 @@ var standbyCmd = cli.Command{
 			Usage: "Enable memory compression for this standby operation",
 		},
 		&cli.StringFlag{
+			Name:  "compression-delay",
+			Usage: `Delay before standby snapshot compression begins (e.g., "30s", "5m")`,
+		},
+		&cli.StringFlag{
 			Name:  "compression-algorithm",
 			Usage: `Compression algorithm: "zstd" or "lz4"`,
 		},
@@ -153,24 +157,31 @@ func handleStandby(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	params := hypeman.InstanceStandbyParams{}
-	if cmd.IsSet("compression-enabled") || cmd.IsSet("compression-algorithm") || cmd.IsSet("compression-level") {
-		compression := shared.SnapshotCompressionConfigParam{
-			Enabled: cmd.Bool("compression-enabled"),
+	if cmd.IsSet("compression-enabled") || cmd.IsSet("compression-delay") || cmd.IsSet("compression-algorithm") || cmd.IsSet("compression-level") {
+		request := hypeman.StandbyInstanceRequestParam{}
+		if delay := cmd.String("compression-delay"); delay != "" {
+			request.CompressionDelay = hypeman.Opt(delay)
 		}
-		if !cmd.IsSet("compression-enabled") {
-			compression.Enabled = true
-		}
-		if cmd.IsSet("compression-level") {
-			compression.Level = hypeman.Opt(int64(cmd.Int("compression-level")))
-		}
-		if algorithm := cmd.String("compression-algorithm"); algorithm != "" {
-			parsedAlgorithm, err := parseSnapshotCompressionAlgorithm(algorithm)
-			if err != nil {
-				return err
+		if cmd.IsSet("compression-enabled") || cmd.IsSet("compression-algorithm") || cmd.IsSet("compression-level") {
+			compression := shared.SnapshotCompressionConfigParam{
+				Enabled: cmd.Bool("compression-enabled"),
 			}
-			compression.Algorithm = parsedAlgorithm
+			if !cmd.IsSet("compression-enabled") {
+				compression.Enabled = true
+			}
+			if cmd.IsSet("compression-level") {
+				compression.Level = hypeman.Opt(int64(cmd.Int("compression-level")))
+			}
+			if algorithm := cmd.String("compression-algorithm"); algorithm != "" {
+				parsedAlgorithm, err := parseSnapshotCompressionAlgorithm(algorithm)
+				if err != nil {
+					return err
+				}
+				compression.Algorithm = parsedAlgorithm
+			}
+			request.Compression = compression
 		}
-		params.Compression = compression
+		params.StandbyInstanceRequest = request
 	}
 
 	fmt.Fprintf(os.Stderr, "Putting %s into standby...\n", args[0])
