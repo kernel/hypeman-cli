@@ -162,24 +162,25 @@ func handleStandby(ctx context.Context, cmd *cli.Command) error {
 		if delay := cmd.String("compression-delay"); delay != "" {
 			request.CompressionDelay = hypeman.Opt(delay)
 		}
-
-		compression := shared.SnapshotCompressionConfigParam{
-			Enabled: cmd.Bool("compression-enabled"),
-		}
-		if !cmd.IsSet("compression-enabled") {
-			compression.Enabled = true
-		}
-		if cmd.IsSet("compression-level") {
-			compression.Level = hypeman.Opt(int64(cmd.Int("compression-level")))
-		}
-		if algorithm := cmd.String("compression-algorithm"); algorithm != "" {
-			parsedAlgorithm, err := parseSnapshotCompressionAlgorithm(algorithm)
-			if err != nil {
-				return err
+		if cmd.IsSet("compression-enabled") || cmd.IsSet("compression-algorithm") || cmd.IsSet("compression-level") {
+			compression := shared.SnapshotCompressionConfigParam{
+				Enabled: cmd.Bool("compression-enabled"),
 			}
-			compression.Algorithm = parsedAlgorithm
+			if !cmd.IsSet("compression-enabled") {
+				compression.Enabled = true
+			}
+			if cmd.IsSet("compression-level") {
+				compression.Level = hypeman.Opt(int64(cmd.Int("compression-level")))
+			}
+			if algorithm := cmd.String("compression-algorithm"); algorithm != "" {
+				parsedAlgorithm, err := parseSnapshotCompressionAlgorithm(algorithm)
+				if err != nil {
+					return err
+				}
+				compression.Algorithm = parsedAlgorithm
+			}
+			request.Compression = compression
 		}
-		request.Compression = compression
 		params.StandbyInstanceRequest = request
 	}
 
