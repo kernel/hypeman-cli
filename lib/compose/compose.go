@@ -13,6 +13,7 @@ const (
 
 	composeResourceInstance = "instance"
 	composeResourceIngress  = "ingress"
+	composeResourceBuild    = "build"
 )
 
 type Runner struct {

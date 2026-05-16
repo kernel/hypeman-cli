@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kernel/hypeman-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -180,7 +181,7 @@ services:
 	require.Len(t, instances, 1)
 	assert.Equal(t, "worker", builds[0].Service)
 	assert.Regexp(t, `^compose/worker-stack/worker:[a-f0-9]{12}$`, builds[0].Image)
-	assert.Equal(t, builds[0].Image, instances[0].Input["image"])
+	assert.Equal(t, builds[0].Image, instances[0].Input.Image)
 
 	again, _, _, _, err := runner.desiredResources()
 	require.NoError(t, err)
@@ -190,6 +191,35 @@ services:
 	changed, _, _, _, err := runner.desiredResources()
 	require.NoError(t, err)
 	require.NotEqual(t, builds[0].Image, changed[0].Image)
+}
+
+func TestRunnableBuildImage(t *testing.T) {
+	assert.Equal(t, "builds/build-id", runnableBuildImage(&hypeman.Build{
+		ID:       "build-id",
+		ImageRef: "builds/build-id",
+	}))
+	assert.Equal(t, "docker.io/builds/build-id:latest", runnableBuildImage(&hypeman.Build{
+		ID: "build-id",
+	}))
+}
+
+func TestUpdateDesiredInstanceImageRehashesTags(t *testing.T) {
+	instances := []desiredInstance{{
+		Service: "worker",
+		Input: hypeman.InstanceNewParams{
+			Name:  "worker-stack-worker",
+			Image: "compose/worker-stack/worker:original",
+			Tags:  composeTags("worker-stack", "worker", composeResourceInstance, "old-hash"),
+		},
+	}}
+
+	require.NoError(t, updateDesiredInstanceImage(instances, "worker-stack", "worker", "builds/build-id"))
+
+	assert.Equal(t, "builds/build-id", instances[0].Input.Image)
+	tags := instances[0].Input.Tags
+	assert.Equal(t, composeResourceInstance, tags[composeTagResource])
+	assert.NotEqual(t, "old-hash", tags[composeTagHash])
+	assert.Equal(t, instances[0].Hash, tags[composeTagHash])
 }
 
 func TestConflictBlockers(t *testing.T) {

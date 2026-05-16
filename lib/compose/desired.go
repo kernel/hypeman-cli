@@ -134,6 +134,26 @@ func buildComposeInstanceInput(instanceName string, service composeServiceSpec) 
 	return input
 }
 
+func updateDesiredInstanceImage(instances []desiredInstance, composeName, serviceName, image string) error {
+	if image == "" {
+		return nil
+	}
+	for i := range instances {
+		if instances[i].Service != serviceName {
+			continue
+		}
+		instances[i].Input.Image = image
+		instances[i].Input.Tags = nil
+		hash, err := shortHash(instances[i].Input)
+		if err != nil {
+			return err
+		}
+		instances[i].Hash = hash
+		instances[i].Input.Tags = composeTags(composeName, serviceName, composeResourceInstance, hash)
+	}
+	return nil
+}
+
 func buildComposeRestartPolicy(restart *composeRestartSpec) hypeman.RestartPolicyParam {
 	policy := hypeman.RestartPolicyParam{}
 	if restart.Policy != "" {

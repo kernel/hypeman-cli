@@ -24,6 +24,11 @@ func (r *Runner) Plan(ctx context.Context) (Plan, error) {
 		if err != nil {
 			return Plan{}, err
 		}
+		if action.buildInput != nil && action.buildInput.ImageRef != "" {
+			if err := updateDesiredInstanceImage(desiredInstances, r.spec.Name, build.Service, action.buildInput.ImageRef); err != nil {
+				return Plan{}, err
+			}
+		}
 		actions = append(actions, action)
 	}
 	for _, image := range images {
@@ -88,6 +93,11 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (Plan, error) {
 			if err := r.applyCreate(ctx, action, opts); err != nil {
 				return result, err
 			}
+			if action.Type == "build" {
+				if err := updatePlannedInstanceImage(result.Actions, r.spec.Name, action.Service, action.Name); err != nil {
+					return result, err
+				}
+			}
 		case "replace":
 			if opts.Verbose {
 				fmt.Fprintf(os.Stderr, "[replace] %s %s\n", action.Type, action.Name)
@@ -99,8 +109,9 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (Plan, error) {
 			if opts.Verbose {
 				fmt.Fprintf(os.Stderr, "[skip] %s %s unchanged\n", action.Type, action.Name)
 			}
-			if action.Type == "build" {
-				if err := r.waitBuiltImageReady(ctx, action.Name); err != nil {
+			if action.Type == "build" && action.buildInput != nil && action.buildInput.ImageRef != "" {
+				action.Name = action.buildInput.ImageRef
+				if err := updatePlannedInstanceImage(result.Actions, r.spec.Name, action.Service, action.Name); err != nil {
 					return result, err
 				}
 			}
@@ -207,7 +218,14 @@ func (r *Runner) applyCreate(ctx context.Context, action *Action, opts UpOptions
 		if action.buildInput == nil {
 			return fmt.Errorf("build action %s missing build input", action.Name)
 		}
-		return r.runBuild(ctx, *action.buildInput, opts.Verbose)
+		imageRef, err := r.runBuild(ctx, *action.buildInput, opts.Verbose)
+		if err != nil {
+			return err
+		}
+		if imageRef != "" {
+			action.Name = imageRef
+		}
+		return nil
 	case "image":
 		return r.ensureImageReady(ctx, action.Name, opts.Verbose)
 	case "instance":
@@ -476,6 +494,25 @@ func summarizeComposeActions(actions []Action) Summary {
 		}
 	}
 	return summary
+}
+
+func updatePlannedInstanceImage(actions []Action, composeName, serviceName, image string) error {
+	if image == "" {
+		return nil
+	}
+	for i := range actions {
+		if actions[i].Type != "instance" || actions[i].Service != serviceName {
+			continue
+		}
+		actions[i].instanceInput.Image = image
+		actions[i].instanceInput.Tags = nil
+		hash, err := shortHash(actions[i].instanceInput)
+		if err != nil {
+			return err
+		}
+		actions[i].instanceInput.Tags = composeTags(composeName, serviceName, composeResourceInstance, hash)
+	}
+	return nil
 }
 
 func isHTTPNotFound(err error) bool {

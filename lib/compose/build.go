@@ -7,11 +7,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/kernel/hypeman-go"
@@ -20,6 +22,8 @@ import (
 type desiredBuild struct {
 	Service           string
 	Image             string
+	Hash              string
+	ImageRef          string
 	DockerfilePath    string
 	DockerfileContent string
 	Source            []byte
@@ -47,6 +51,7 @@ func (r *Runner) desiredBuildForService(serviceName string, service composeServi
 	return desiredBuild{
 		Service:           serviceName,
 		Image:             image,
+		Hash:              hash,
 		DockerfilePath:    dockerfilePath,
 		DockerfileContent: string(dockerfileContent),
 		Source:            source,
@@ -54,16 +59,29 @@ func (r *Runner) desiredBuildForService(serviceName string, service composeServi
 }
 
 func (r *Runner) planBuild(ctx context.Context, build desiredBuild) (Action, error) {
-	_, err := r.client.Images.Get(ctx, url.PathEscape(build.Image), r.opts...)
 	action := Action{
 		Type:       "build",
 		Name:       build.Image,
 		Service:    build.Service,
 		buildInput: &build,
 	}
+
+	readyBuild, err := r.findReadyBuild(ctx, build)
+	if err != nil {
+		return Action{}, err
+	}
+	if readyBuild != nil {
+		action.Action = "unchanged"
+		action.Reason = "build already ready"
+		action.buildInput.ImageRef = runnableBuildImage(readyBuild)
+		return action, nil
+	}
+
+	_, err = r.client.Images.Get(ctx, url.PathEscape(build.Image), r.opts...)
 	if err == nil {
 		action.Action = "unchanged"
 		action.Reason = "image already exists"
+		action.buildInput.ImageRef = build.Image
 		return action, nil
 	}
 	if isHTTPNotFound(err) {
@@ -74,25 +92,55 @@ func (r *Runner) planBuild(ctx context.Context, build desiredBuild) (Action, err
 	return Action{}, fmt.Errorf("check build image %s: %w", build.Image, err)
 }
 
-func (r *Runner) runBuild(ctx context.Context, build desiredBuild, verbose bool) error {
+func (r *Runner) findReadyBuild(ctx context.Context, build desiredBuild) (*hypeman.Build, error) {
+	builds, err := r.client.Builds.List(ctx, hypeman.BuildListParams{
+		Tags: composeTags(r.spec.Name, build.Service, composeResourceBuild, build.Hash),
+	}, r.opts...)
+	if err != nil {
+		return nil, fmt.Errorf("list builds for %s: %w", build.Image, err)
+	}
+	if builds == nil {
+		return nil, nil
+	}
+	var ready []hypeman.Build
+	for _, existing := range *builds {
+		if existing.Status == hypeman.BuildStatusReady && runnableBuildImage(&existing) != "" {
+			ready = append(ready, existing)
+		}
+	}
+	if len(ready) == 0 {
+		return nil, nil
+	}
+	sort.Slice(ready, func(i, j int) bool {
+		return ready[i].CreatedAt.After(ready[j].CreatedAt)
+	})
+	return &ready[0], nil
+}
+
+func (r *Runner) runBuild(ctx context.Context, build desiredBuild, verbose bool) (string, error) {
 	if verbose {
 		fmt.Fprintf(os.Stderr, "[build] image %s from %s\n", build.Image, build.DockerfilePath)
+	}
+	tags, err := json.Marshal(composeTags(r.spec.Name, build.Service, composeResourceBuild, build.Hash))
+	if err != nil {
+		return "", err
 	}
 	started, err := r.client.Builds.New(ctx, hypeman.BuildNewParams{
 		Source:     bytes.NewReader(build.Source),
 		Dockerfile: hypeman.Opt(build.DockerfileContent),
-		ImageName:  hypeman.Opt(build.Image),
+		Tags:       hypeman.Opt(string(tags)),
 	}, r.opts...)
 	if err != nil {
-		return fmt.Errorf("start build %s: %w", build.Image, err)
+		return "", fmt.Errorf("start build %s: %w", build.Image, err)
 	}
 	if verbose {
 		fmt.Fprintf(os.Stderr, "[wait] build %s ready\n", started.ID)
 	}
-	if _, err := r.waitBuildReady(ctx, started.ID); err != nil {
-		return err
+	readyBuild, err := r.waitBuildReady(ctx, started.ID)
+	if err != nil {
+		return "", err
 	}
-	return r.waitBuiltImageReady(ctx, build.Image)
+	return runnableBuildImage(readyBuild), nil
 }
 
 func (r *Runner) waitBuildReady(ctx context.Context, buildID string) (*hypeman.Build, error) {
@@ -124,12 +172,14 @@ func (r *Runner) waitBuildReady(ctx context.Context, buildID string) (*hypeman.B
 	}
 }
 
-func (r *Runner) waitBuiltImageReady(ctx context.Context, image string) error {
-	img, err := r.client.Images.Get(ctx, url.PathEscape(image), r.opts...)
-	if err != nil {
-		return fmt.Errorf("built image %s unavailable: %w", image, err)
+func runnableBuildImage(build *hypeman.Build) string {
+	if build.ImageRef != "" {
+		return build.ImageRef
 	}
-	return waitForImageReady(ctx, &r.client, img)
+	if build.ID != "" {
+		return fmt.Sprintf("docker.io/builds/%s:latest", build.ID)
+	}
+	return ""
 }
 
 func composeBuildImageName(composeName, serviceName, hash string) string {
