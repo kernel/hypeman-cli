@@ -78,6 +78,50 @@ hypeman ingress delete my-ingress
 hypeman rm --force --all
 ```
 
+### Compose
+
+Use `hypeman compose` to apply a small declarative workload file. It creates
+normal images, instances, and ingresses, then tags the instances and ingresses
+so re-running the command is idempotent.
+
+```yaml
+version: 1
+name: hypeship-otel
+
+services:
+  otelcol:
+    image: otel/opentelemetry-collector-contrib:0.108.0
+    cmd: ["--config=env:OTELCOL_CONFIG"]
+    env:
+      OTELCOL_CONFIG: ${file:otelcol.yaml}
+      SIGNOZ_ACCESS_TOKEN: ${env:SIGNOZ_ACCESS_TOKEN}
+    resources:
+      vcpus: 8
+      memory: 4GB
+    restart:
+      policy: on_failure
+      backoff: 5s
+      max_attempts: 10
+    healthcheck:
+      http:
+        port: 13133
+        path: /
+      interval: 10s
+      timeout: 2s
+      failure_threshold: 3
+    ingress:
+      - hostname: otel.example.com
+        host_port: 443
+        target_port: 4318
+        tls: true
+```
+
+```sh
+hypeman compose plan -f hypeman.compose.yaml
+hypeman compose up -f hypeman.compose.yaml
+hypeman compose down -f hypeman.compose.yaml
+```
+
 More ingress features:
 - Automatic certs
 - Subdomain-based routing
