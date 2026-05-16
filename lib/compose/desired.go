@@ -55,7 +55,7 @@ func (r *Runner) desiredResources() ([]desiredBuild, []desiredInstance, []desire
 			builds = append(builds, build)
 			service.Image = build.Image
 		}
-		instanceName := composeInstanceName(r.spec.Name, serviceName)
+		instanceName := composeInstanceName(r.spec.Name, serviceName, service)
 		instanceInput := buildComposeInstanceInput(instanceName, service)
 		instanceHash, err := shortHash(instanceInput)
 		if err != nil {
@@ -70,7 +70,7 @@ func (r *Runner) desiredResources() ([]desiredBuild, []desiredInstance, []desire
 		})
 
 		for i, ingressSpec := range service.Ingress {
-			ingressName := composeIngressName(r.spec.Name, serviceName, i)
+			ingressName := composeIngressName(r.spec.Name, serviceName, i, ingressSpec)
 			ingressInput := buildComposeIngressInput(instanceName, ingressName, ingressSpec)
 			ingressHash, err := shortHash(ingressInput)
 			if err != nil {
@@ -253,11 +253,17 @@ func buildComposeIngressInput(instanceName, ingressName string, spec composeIngr
 	}
 }
 
-func composeInstanceName(composeName, serviceName string) string {
+func composeInstanceName(composeName, serviceName string, service composeServiceSpec) string {
+	if service.Name != "" {
+		return service.Name
+	}
 	return composeName + "-" + serviceName
 }
 
-func composeIngressName(composeName, serviceName string, index int) string {
+func composeIngressName(composeName, serviceName string, index int, ingress composeIngressRuleSpec) string {
+	if ingress.Name != "" {
+		return ingress.Name
+	}
 	return fmt.Sprintf("%s-%s-%d", composeName, serviceName, index)
 }
 
