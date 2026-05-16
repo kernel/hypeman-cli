@@ -1,4 +1,4 @@
-package cmd
+package compose
 
 import (
 	"os"
@@ -83,7 +83,7 @@ func TestBuildComposeInstanceInputIncludesFuturePolicyFields(t *testing.T) {
 }
 
 func TestDesiredResourcesUseDeterministicNamesAndTags(t *testing.T) {
-	runner := composeRunner{
+	runner := Runner{
 		spec: composeSpec{
 			Version: 1,
 			Name:    "hypeship-otel",
@@ -127,7 +127,7 @@ func TestValidateComposeSpecRejectsInvalidNames(t *testing.T) {
 }
 
 func TestConflictBlockers(t *testing.T) {
-	blockers := conflictBlockers([]composeAction{
+	blockers := conflictBlockers([]Action{
 		{Action: "create", Type: "image", Name: "alpine:latest"},
 		{Action: "conflict", Type: "instance", Name: "app-api", Reason: "name exists without compose ownership"},
 	})
