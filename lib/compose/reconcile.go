@@ -13,12 +13,19 @@ import (
 )
 
 func (r *Runner) Plan(ctx context.Context) (Plan, error) {
-	desiredInstances, desiredIngresses, images, err := r.desiredResources()
+	desiredBuilds, desiredInstances, desiredIngresses, images, err := r.desiredResources()
 	if err != nil {
 		return Plan{}, err
 	}
 
 	var actions []Action
+	for _, build := range desiredBuilds {
+		action, err := r.planBuild(ctx, build)
+		if err != nil {
+			return Plan{}, err
+		}
+		actions = append(actions, action)
+	}
 	for _, image := range images {
 		action, err := r.planImage(ctx, image)
 		if err != nil {
@@ -92,6 +99,11 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (Plan, error) {
 			if opts.Verbose {
 				fmt.Fprintf(os.Stderr, "[skip] %s %s unchanged\n", action.Type, action.Name)
 			}
+			if action.Type == "build" {
+				if err := r.waitBuiltImageReady(ctx, action.Name); err != nil {
+					return result, err
+				}
+			}
 			if action.Type == "image" {
 				if err := r.ensureImageReady(ctx, action.Name, opts.Verbose); err != nil {
 					return result, err
@@ -145,20 +157,17 @@ func (r *Runner) Down(ctx context.Context, verbose bool) (Plan, error) {
 		Summary: summarizeComposeActions(actions),
 	}
 	if len(actions) == 0 {
-		_, desiredIngresses, _, err := r.desiredResources()
-		if err != nil {
-			return Plan{}, err
-		}
-		for _, ingress := range desiredIngresses {
-			result.Actions = append(result.Actions, Action{
-				Action:  "skip",
-				Type:    "ingress",
-				Name:    ingress.Name,
-				Service: ingress.Service,
-				Reason:  "not found",
-			})
-		}
 		for serviceName := range r.spec.Services {
+			service := r.spec.Services[serviceName]
+			for i := range service.Ingress {
+				result.Actions = append(result.Actions, Action{
+					Action:  "skip",
+					Type:    "ingress",
+					Name:    composeIngressName(r.spec.Name, serviceName, i),
+					Service: serviceName,
+					Reason:  "not found",
+				})
+			}
 			result.Actions = append(result.Actions, Action{
 				Action:  "skip",
 				Type:    "instance",
@@ -194,6 +203,11 @@ func (r *Runner) Down(ctx context.Context, verbose bool) (Plan, error) {
 
 func (r *Runner) applyCreate(ctx context.Context, action *Action, opts UpOptions) error {
 	switch action.Type {
+	case "build":
+		if action.buildInput == nil {
+			return fmt.Errorf("build action %s missing build input", action.Name)
+		}
+		return r.runBuild(ctx, *action.buildInput, opts.Verbose)
 	case "image":
 		return r.ensureImageReady(ctx, action.Name, opts.Verbose)
 	case "instance":

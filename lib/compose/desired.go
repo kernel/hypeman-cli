@@ -25,12 +25,14 @@ type desiredIngress struct {
 	Input   hypeman.IngressNewParams
 }
 
-func (r *Runner) desiredResources() ([]desiredInstance, []desiredIngress, []string, error) {
+func (r *Runner) desiredResources() ([]desiredBuild, []desiredInstance, []desiredIngress, []string, error) {
 	serviceNames := make([]string, 0, len(r.spec.Services))
 	imageSet := map[string]struct{}{}
 	for name, service := range r.spec.Services {
 		serviceNames = append(serviceNames, name)
-		imageSet[service.Image] = struct{}{}
+		if service.Image != "" {
+			imageSet[service.Image] = struct{}{}
+		}
 	}
 	sort.Strings(serviceNames)
 
@@ -40,15 +42,24 @@ func (r *Runner) desiredResources() ([]desiredInstance, []desiredIngress, []stri
 	}
 	sort.Strings(images)
 
+	var builds []desiredBuild
 	instances := make([]desiredInstance, 0, len(serviceNames))
 	var ingresses []desiredIngress
 	for _, serviceName := range serviceNames {
 		service := r.spec.Services[serviceName]
+		if service.Dockerfile != "" {
+			build, err := r.desiredBuildForService(serviceName, service)
+			if err != nil {
+				return nil, nil, nil, nil, err
+			}
+			builds = append(builds, build)
+			service.Image = build.Image
+		}
 		instanceName := composeInstanceName(r.spec.Name, serviceName)
 		instanceInput := buildComposeInstanceInput(instanceName, service)
 		instanceHash, err := shortHash(instanceInput)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		instanceInput.Tags = composeTags(r.spec.Name, serviceName, composeResourceInstance, instanceHash)
 		instances = append(instances, desiredInstance{
@@ -63,7 +74,7 @@ func (r *Runner) desiredResources() ([]desiredInstance, []desiredIngress, []stri
 			ingressInput := buildComposeIngressInput(instanceName, ingressName, ingressSpec)
 			ingressHash, err := shortHash(ingressInput)
 			if err != nil {
-				return nil, nil, nil, err
+				return nil, nil, nil, nil, err
 			}
 			ingressInput.Tags = composeTags(r.spec.Name, serviceName, composeResourceIngress, ingressHash)
 			ingresses = append(ingresses, desiredIngress{
@@ -74,7 +85,7 @@ func (r *Runner) desiredResources() ([]desiredInstance, []desiredIngress, []stri
 			})
 		}
 	}
-	return instances, ingresses, images, nil
+	return builds, instances, ingresses, images, nil
 }
 
 func buildComposeInstanceInput(instanceName string, service composeServiceSpec) hypeman.InstanceNewParams {

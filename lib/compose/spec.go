@@ -18,6 +18,7 @@ type composeSpec struct {
 
 type composeServiceSpec struct {
 	Image      string                   `json:"image" yaml:"image"`
+	Dockerfile string                   `json:"dockerfile,omitempty" yaml:"dockerfile"`
 	Entrypoint []string                 `json:"entrypoint,omitempty" yaml:"entrypoint"`
 	Cmd        []string                 `json:"cmd,omitempty" yaml:"cmd"`
 	Env        map[string]string        `json:"env,omitempty" yaml:"env"`
@@ -122,8 +123,11 @@ func validateComposeSpec(spec *composeSpec) error {
 		if len(instanceName) > 63 {
 			return fmt.Errorf("service %q produces instance name %q longer than 63 characters", name, instanceName)
 		}
-		if service.Image == "" {
-			return fmt.Errorf("service %q image is required", name)
+		if service.Image == "" && service.Dockerfile == "" {
+			return fmt.Errorf("service %q image or dockerfile is required", name)
+		}
+		if service.Image != "" && service.Dockerfile != "" {
+			return fmt.Errorf("service %q cannot include both image and dockerfile", name)
 		}
 		for i, rule := range service.Ingress {
 			if rule.Hostname == "" {

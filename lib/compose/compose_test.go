@@ -113,7 +113,7 @@ func TestDesiredResourcesUseDeterministicNamesAndTags(t *testing.T) {
 		},
 	}
 
-	instances, ingresses, images, err := runner.desiredResources()
+	_, instances, ingresses, images, err := runner.desiredResources()
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"otel/opentelemetry-collector-contrib:0.108.0"}, images)
@@ -139,6 +139,57 @@ func TestValidateComposeSpecRejectsInvalidNames(t *testing.T) {
 	})
 
 	require.EqualError(t, err, "compose name must contain only lowercase letters, digits, and dashes")
+}
+
+func TestValidateComposeSpecRejectsImageAndDockerfile(t *testing.T) {
+	err := validateComposeSpec(&composeSpec{
+		Version: 1,
+		Name:    "worker-stack",
+		Services: map[string]composeServiceSpec{
+			"worker": {Image: "alpine:latest", Dockerfile: "./Dockerfile"},
+		},
+	})
+
+	require.EqualError(t, err, `service "worker" cannot include both image and dockerfile`)
+}
+
+func TestDesiredResourcesBuildsDockerfileService(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte("FROM alpine:latest\nCOPY worker /worker\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "worker"), []byte("echo ok\n"), 0644))
+
+	composePath := filepath.Join(dir, "hypeman.compose.yaml")
+	require.NoError(t, os.WriteFile(composePath, []byte(`
+version: 1
+name: worker-stack
+services:
+  worker:
+    dockerfile: ./Dockerfile
+    cmd: ["./worker"]
+`), 0644))
+
+	spec, err := loadComposeSpec(composePath)
+	require.NoError(t, err)
+
+	runner := Runner{file: composePath, spec: spec}
+	builds, instances, _, images, err := runner.desiredResources()
+	require.NoError(t, err)
+
+	require.Empty(t, images)
+	require.Len(t, builds, 1)
+	require.Len(t, instances, 1)
+	assert.Equal(t, "worker", builds[0].Service)
+	assert.Regexp(t, `^compose/worker-stack/worker:[a-f0-9]{12}$`, builds[0].Image)
+	assert.Equal(t, builds[0].Image, instances[0].Input["image"])
+
+	again, _, _, _, err := runner.desiredResources()
+	require.NoError(t, err)
+	require.Equal(t, builds[0].Image, again[0].Image)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "worker"), []byte("echo changed\n"), 0644))
+	changed, _, _, _, err := runner.desiredResources()
+	require.NoError(t, err)
+	require.NotEqual(t, builds[0].Image, changed[0].Image)
 }
 
 func TestConflictBlockers(t *testing.T) {
