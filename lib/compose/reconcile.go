@@ -197,8 +197,8 @@ func (r *Runner) applyCreate(ctx context.Context, action *Action, opts UpOptions
 	case "image":
 		return r.ensureImageReady(ctx, action.Name, opts.Verbose)
 	case "instance":
-		var inst hypeman.Instance
-		if err := r.client.Post(ctx, "instances", action.instanceInput, &inst, r.opts...); err != nil {
+		inst, err := r.client.Instances.New(ctx, action.instanceInput, r.opts...)
+		if err != nil {
 			return err
 		}
 		action.instanceID = inst.ID

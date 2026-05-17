@@ -15,7 +15,7 @@ type desiredInstance struct {
 	Name    string
 	Service string
 	Hash    string
-	Input   map[string]any
+	Input   hypeman.InstanceNewParams
 }
 
 type desiredIngress struct {
@@ -50,7 +50,7 @@ func (r *Runner) desiredResources() ([]desiredInstance, []desiredIngress, []stri
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		instanceInput["tags"] = composeTags(r.spec.Name, serviceName, composeResourceInstance, instanceHash)
+		instanceInput.Tags = composeTags(r.spec.Name, serviceName, composeResourceInstance, instanceHash)
 		instances = append(instances, desiredInstance{
 			Name:    instanceName,
 			Service: serviceName,
@@ -77,69 +77,125 @@ func (r *Runner) desiredResources() ([]desiredInstance, []desiredIngress, []stri
 	return instances, ingresses, images, nil
 }
 
-func buildComposeInstanceInput(instanceName string, service composeServiceSpec) map[string]any {
-	input := map[string]any{
-		"name":  instanceName,
-		"image": service.Image,
+func buildComposeInstanceInput(instanceName string, service composeServiceSpec) hypeman.InstanceNewParams {
+	input := hypeman.InstanceNewParams{
+		Name:  instanceName,
+		Image: service.Image,
 	}
 	if len(service.Entrypoint) > 0 {
-		input["entrypoint"] = service.Entrypoint
+		input.Entrypoint = service.Entrypoint
 	}
 	if len(service.Cmd) > 0 {
-		input["cmd"] = service.Cmd
+		input.Cmd = service.Cmd
 	}
 	if len(service.Env) > 0 {
-		input["env"] = service.Env
+		input.Env = service.Env
 	}
 	if service.Resources.Vcpus > 0 {
-		input["vcpus"] = service.Resources.Vcpus
+		input.Vcpus = hypeman.Int(int64(service.Resources.Vcpus))
 	}
 	if service.Resources.Memory != "" {
-		input["size"] = service.Resources.Memory
+		input.Size = hypeman.String(service.Resources.Memory)
 	}
 	if service.Resources.OverlaySize != "" {
-		input["overlay_size"] = service.Resources.OverlaySize
+		input.OverlaySize = hypeman.String(service.Resources.OverlaySize)
 	}
 	if service.Resources.HotplugSize != "" {
-		input["hotplug_size"] = service.Resources.HotplugSize
+		input.HotplugSize = hypeman.String(service.Resources.HotplugSize)
 	}
 	if service.Resources.DiskIOBps != "" {
-		input["disk_io_bps"] = service.Resources.DiskIOBps
+		input.DiskIoBps = hypeman.String(service.Resources.DiskIOBps)
 	}
 	if service.Resources.BandwidthDownload != "" || service.Resources.BandwidthUpload != "" {
-		network := map[string]any{}
 		if service.Resources.BandwidthDownload != "" {
-			network["bandwidth_download"] = service.Resources.BandwidthDownload
+			input.Network.BandwidthDownload = hypeman.String(service.Resources.BandwidthDownload)
 		}
 		if service.Resources.BandwidthUpload != "" {
-			network["bandwidth_upload"] = service.Resources.BandwidthUpload
+			input.Network.BandwidthUpload = hypeman.String(service.Resources.BandwidthUpload)
 		}
-		input["network"] = network
 	}
 	if service.Restart != nil {
-		input["restart_policy"] = buildComposeRestartPayload(service.Restart)
+		input.RestartPolicy = buildComposeRestartPolicy(service.Restart)
 	}
 	if service.Health != nil {
-		input["health_check"] = service.Health
+		input.HealthCheck = buildComposeHealthCheck(service.Health)
 	}
 	return input
 }
 
-func buildComposeRestartPayload(restart *composeRestartSpec) map[string]any {
-	payload := map[string]any{}
+func buildComposeRestartPolicy(restart *composeRestartSpec) hypeman.RestartPolicyParam {
+	policy := hypeman.RestartPolicyParam{}
 	if restart.Policy != "" {
-		payload["policy"] = strings.ReplaceAll(restart.Policy, "-", "_")
+		policy.Policy = hypeman.RestartPolicyPolicy(strings.ReplaceAll(restart.Policy, "-", "_"))
 	}
 	if restart.Backoff != "" {
-		payload["backoff"] = restart.Backoff
+		policy.Backoff = hypeman.String(restart.Backoff)
 	}
 	if restart.MaxAttempts > 0 {
-		payload["max_attempts"] = restart.MaxAttempts
+		policy.MaxAttempts = hypeman.Int(int64(restart.MaxAttempts))
 	}
 	if restart.StableAfter != "" {
-		payload["stable_after"] = restart.StableAfter
+		policy.StableAfter = hypeman.String(restart.StableAfter)
 	}
-	return payload
+	return policy
+}
+
+func buildComposeHealthCheck(check *composeCheckSpec) hypeman.HealthCheckParam {
+	health := hypeman.HealthCheckParam{}
+	if check.Type != "" {
+		health.Type = hypeman.HealthCheckType(strings.ToLower(check.Type))
+	}
+	if check.HTTP != nil {
+		health.Type = defaultHealthCheckType(health.Type, hypeman.HealthCheckTypeHTTP)
+		health.HTTP = hypeman.HealthCheckHTTPParam{
+			Port: int64(check.HTTP.Port),
+		}
+		if check.HTTP.Path != "" {
+			health.HTTP.Path = hypeman.String(check.HTTP.Path)
+		}
+		if check.HTTP.Scheme != "" {
+			health.HTTP.Scheme = hypeman.HealthCheckHTTPScheme(strings.ToLower(check.HTTP.Scheme))
+		}
+		if check.HTTP.ExpectedStatus > 0 {
+			health.HTTP.ExpectedStatus = hypeman.Int(int64(check.HTTP.ExpectedStatus))
+		}
+	}
+	if check.TCP != nil {
+		health.Type = defaultHealthCheckType(health.Type, hypeman.HealthCheckTypeTcp)
+		health.Tcp = hypeman.HealthCheckTcpParam{Port: int64(check.TCP.Port)}
+	}
+	if check.Exec != nil {
+		health.Type = defaultHealthCheckType(health.Type, hypeman.HealthCheckTypeExec)
+		health.Exec = hypeman.HealthCheckExecParam{
+			Command: check.Exec.Command,
+		}
+		if check.Exec.WorkingDir != "" {
+			health.Exec.WorkingDir = hypeman.String(check.Exec.WorkingDir)
+		}
+	}
+	if check.Interval != "" {
+		health.Interval = hypeman.String(check.Interval)
+	}
+	if check.Timeout != "" {
+		health.Timeout = hypeman.String(check.Timeout)
+	}
+	if check.StartPeriod != "" {
+		health.StartPeriod = hypeman.String(check.StartPeriod)
+	}
+	if check.FailureThreshold > 0 {
+		health.FailureThreshold = hypeman.Int(int64(check.FailureThreshold))
+	}
+	if check.SuccessThreshold > 0 {
+		health.SuccessThreshold = hypeman.Int(int64(check.SuccessThreshold))
+	}
+	return health
+}
+
+func defaultHealthCheckType(current, fallback hypeman.HealthCheckType) hypeman.HealthCheckType {
+	if current != "" {
+		return current
+	}
+	return fallback
 }
 
 func buildComposeIngressInput(instanceName, ingressName string, spec composeIngressRuleSpec) hypeman.IngressNewParams {

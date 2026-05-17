@@ -11,7 +11,7 @@ require (
 	github.com/google/go-containerregistry v0.20.7
 	github.com/gorilla/websocket v1.5.3
 	github.com/itchyny/json2yaml v0.1.4
-	github.com/kernel/hypeman-go v0.19.0
+	github.com/kernel/hypeman-go v0.20.0
 	github.com/knadh/koanf/parsers/yaml v1.1.0
 	github.com/knadh/koanf/providers/env v1.1.0
 	github.com/knadh/koanf/providers/file v1.2.1
@@ -25,6 +25,7 @@ require (
 	github.com/urfave/cli/v3 v3.3.2
 	golang.org/x/sys v0.38.0
 	golang.org/x/term v0.37.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -86,5 +87,4 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20250825161204-c5933d9347a5 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250825161204-c5933d9347a5 // indirect
 	google.golang.org/grpc v1.75.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

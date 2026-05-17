@@ -54,7 +54,7 @@ type Action struct {
 
 	instanceID    string
 	ingressID     string
-	instanceInput map[string]any
+	instanceInput hypeman.InstanceNewParams
 	ingressInput  hypeman.IngressNewParams
 }
 

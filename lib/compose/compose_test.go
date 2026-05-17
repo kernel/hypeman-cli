@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,7 +36,7 @@ services:
 	assert.Equal(t, "secret-token", service.Env["SIGNOZ_ACCESS_TOKEN"])
 }
 
-func TestBuildComposeInstanceInputIncludesFuturePolicyFields(t *testing.T) {
+func TestBuildComposeInstanceInputIncludesPolicyFields(t *testing.T) {
 	service := composeServiceSpec{
 		Image: "otel/opentelemetry-collector-contrib:0.108.0",
 		Cmd:   []string{"--config=env:OTELCOL_CONFIG"},
@@ -63,23 +64,37 @@ func TestBuildComposeInstanceInputIncludesFuturePolicyFields(t *testing.T) {
 	}
 
 	input := buildComposeInstanceInput("hypeship-otel-otelcol", service)
+	inputJSON := map[string]any{}
+	inputData, err := json.Marshal(input)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(inputData, &inputJSON))
 
-	assert.Equal(t, "hypeship-otel-otelcol", input["name"])
-	assert.Equal(t, service.Image, input["image"])
-	assert.Equal(t, []string{"--config=env:OTELCOL_CONFIG"}, input["cmd"])
-	assert.Equal(t, "4GB", input["size"])
-	assert.Equal(t, 8, input["vcpus"])
+	assert.Equal(t, "hypeship-otel-otelcol", inputJSON["name"])
+	assert.Equal(t, service.Image, inputJSON["image"])
+	assert.Equal(t, []any{"--config=env:OTELCOL_CONFIG"}, inputJSON["cmd"])
+	assert.Equal(t, "4GB", inputJSON["size"])
+	assert.Equal(t, float64(8), inputJSON["vcpus"])
 	assert.Equal(t, map[string]any{
 		"backoff":      "5s",
-		"max_attempts": 10,
+		"max_attempts": float64(10),
 		"policy":       "on_failure",
 		"stable_after": "10m",
-	}, input["restart_policy"])
-	assert.Equal(t, service.Health, input["health_check"])
+	}, inputJSON["restart_policy"])
+	assert.Equal(t, map[string]any{
+		"failure_threshold": float64(3),
+		"http": map[string]any{
+			"expected_status": float64(200),
+			"path":            "/",
+			"port":            float64(13133),
+		},
+		"interval": "10s",
+		"timeout":  "2s",
+		"type":     "http",
+	}, inputJSON["health_check"])
 	assert.Equal(t, map[string]any{
 		"bandwidth_download": "300Mbps",
 		"bandwidth_upload":   "300Mbps",
-	}, input["network"])
+	}, inputJSON["network"])
 }
 
 func TestDesiredResourcesUseDeterministicNamesAndTags(t *testing.T) {
@@ -104,8 +119,8 @@ func TestDesiredResourcesUseDeterministicNamesAndTags(t *testing.T) {
 	require.Equal(t, []string{"otel/opentelemetry-collector-contrib:0.108.0"}, images)
 	require.Len(t, instances, 1)
 	assert.Equal(t, "hypeship-otel-otelcol", instances[0].Name)
-	assert.Equal(t, composeResourceInstance, instances[0].Input["tags"].(map[string]string)[composeTagResource])
-	assert.NotEmpty(t, instances[0].Input["tags"].(map[string]string)[composeTagHash])
+	assert.Equal(t, composeResourceInstance, instances[0].Input.Tags[composeTagResource])
+	assert.NotEmpty(t, instances[0].Input.Tags[composeTagHash])
 
 	require.Len(t, ingresses, 1)
 	assert.Equal(t, "hypeship-otel-otelcol-0", ingresses[0].Name)
