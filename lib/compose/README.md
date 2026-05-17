@@ -2,7 +2,7 @@
 
 ## Compose
 
-`hypeman compose` is a lightweight way to declare a small workload and apply it through the existing Hypeman API. It is not a replacement for every Docker Compose feature; it focuses on the pieces Hypeman already manages well: images, instances, restart policy, health checks, and ingresses.
+`hypeman compose` is a lightweight way to declare a small workload for Hypeman.
 
 Compose files default to `hypeman.compose.yaml`:
 
