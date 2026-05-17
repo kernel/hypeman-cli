@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -77,19 +76,9 @@ func (r *Runner) planBuild(ctx context.Context, build desiredBuild) (Action, err
 		return action, nil
 	}
 
-	_, err = r.client.Images.Get(ctx, url.PathEscape(build.Image), r.opts...)
-	if err == nil {
-		action.Action = "unchanged"
-		action.Reason = "image already exists"
-		action.buildInput.ImageRef = build.Image
-		return action, nil
-	}
-	if isHTTPNotFound(err) {
-		action.Action = "create"
-		action.Reason = "image missing"
-		return action, nil
-	}
-	return Action{}, fmt.Errorf("check build image %s: %w", build.Image, err)
+	action.Action = "create"
+	action.Reason = "build missing"
+	return action, nil
 }
 
 func (r *Runner) findReadyBuild(ctx context.Context, build desiredBuild) (*hypeman.Build, error) {
@@ -140,7 +129,11 @@ func (r *Runner) runBuild(ctx context.Context, build desiredBuild, verbose bool)
 	if err != nil {
 		return "", err
 	}
-	return runnableBuildImage(readyBuild), nil
+	imageRef := runnableBuildImage(readyBuild)
+	if imageRef == "" {
+		return "", fmt.Errorf("build %s did not report a runnable image", started.ID)
+	}
+	return imageRef, nil
 }
 
 func (r *Runner) waitBuildReady(ctx context.Context, buildID string) (*hypeman.Build, error) {

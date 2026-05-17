@@ -114,6 +114,9 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (Plan, error) {
 				if err := updatePlannedInstanceImage(result.Actions, r.spec.Name, action.Service, action.Name); err != nil {
 					return result, err
 				}
+				if err := r.ensureImageReady(ctx, action.Name, opts.Verbose); err != nil {
+					return result, err
+				}
 			}
 			if action.Type == "image" {
 				if err := r.ensureImageReady(ctx, action.Name, opts.Verbose); err != nil {
@@ -224,6 +227,9 @@ func (r *Runner) applyCreate(ctx context.Context, action *Action, opts UpOptions
 		}
 		if imageRef != "" {
 			action.Name = imageRef
+		}
+		if err := r.ensureImageReady(ctx, action.Name, opts.Verbose); err != nil {
+			return err
 		}
 		return nil
 	case "image":
