@@ -4,7 +4,6 @@
 
 `hypeman compose` is a lightweight way to declare a small workload for Hypeman.
 
-Compose files default to `hypeman.compose.yaml`:
 
 ```yaml
 version: 1
