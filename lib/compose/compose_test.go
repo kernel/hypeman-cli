@@ -201,6 +201,12 @@ services:
 	require.NoError(t, err)
 	require.Equal(t, builds[0].Image, again[0].Image)
 
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".dockerignore"), []byte("*.tmp\n"), 0644))
+	dockerignoreChanged, _, _, _, err := runner.desiredResources()
+	require.NoError(t, err)
+	require.NotEqual(t, builds[0].Image, dockerignoreChanged[0].Image)
+
+	require.NoError(t, os.Remove(filepath.Join(dir, ".dockerignore")))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "worker"), []byte("echo changed\n"), 0644))
 	changed, _, _, _, err := runner.desiredResources()
 	require.NoError(t, err)

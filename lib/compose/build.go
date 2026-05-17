@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -45,7 +46,11 @@ func (r *Runner) desiredBuildForService(serviceName string, service composeServi
 	if err != nil {
 		return desiredBuild{}, fmt.Errorf("service %q build context: %w", serviceName, err)
 	}
-	hash := buildHash(source, dockerfileContent)
+	dockerignoreContent, err := readOptionalFile(filepath.Join(filepath.Dir(dockerfilePath), ".dockerignore"))
+	if err != nil {
+		return desiredBuild{}, fmt.Errorf("service %q .dockerignore: %w", serviceName, err)
+	}
+	hash := buildHash(source, dockerfileContent, dockerignoreContent)
 	image := composeBuildImageName(r.spec.Name, serviceName, hash)
 	return desiredBuild{
 		Service:           serviceName,
@@ -255,9 +260,18 @@ func createSourceTarball(contextPath string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func buildHash(source []byte, dockerfile []byte) string {
+func readOptionalFile(path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	return data, err
+}
+
+func buildHash(parts ...[]byte) string {
 	sum := sha256.New()
-	sum.Write(source)
-	sum.Write(dockerfile)
+	for _, part := range parts {
+		sum.Write(part)
+	}
 	return hex.EncodeToString(sum.Sum(nil))[:12]
 }
