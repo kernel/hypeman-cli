@@ -13,28 +13,42 @@ import (
 
 func TestLoadComposeSpecInterpolatesFilesAndEnv(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "otelcol.yaml"), []byte("receivers: {}\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "otelcol.yaml"), []byte("endpoint: https://${env:OTEL_COLLECTOR_VM_HOSTNAME}\ntoken: ${file:token.txt}\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "token.txt"), []byte("${env:OTEL_COLLECTOR_VM_TOKEN}"), 0644))
+	t.Setenv("COMPOSE_NAME", "hypeship-otel")
+	t.Setenv("OTEL_IMAGE", "otel/opentelemetry-collector-contrib:0.108.0")
+	t.Setenv("OTELCOL_ENV_NAME", "OTELCOL_CONFIG")
+	t.Setenv("OTEL_COLLECTOR_VM_HOSTNAME", "otel.example.com")
+	t.Setenv("OTEL_COLLECTOR_VM_TOKEN", "collector-token")
 	t.Setenv("SIGNOZ_ACCESS_TOKEN", "secret-token")
 
 	composePath := filepath.Join(dir, "hypeman.compose.yaml")
 	require.NoError(t, os.WriteFile(composePath, []byte(`
 version: 1
-name: hypeship-otel
+name: ${env:COMPOSE_NAME}
 services:
   otelcol:
-    image: otel/opentelemetry-collector-contrib:0.108.0
-    cmd: ["--config=env:OTELCOL_CONFIG"]
+    image: ${env:OTEL_IMAGE}
+    cmd: ["--config=env:${env:OTELCOL_ENV_NAME}"]
     env:
       OTELCOL_CONFIG: ${file:otelcol.yaml}
       SIGNOZ_ACCESS_TOKEN: ${env:SIGNOZ_ACCESS_TOKEN}
+    ingress:
+      - hostname: ${env:OTEL_COLLECTOR_VM_HOSTNAME}
+        target_port: 4318
 `), 0644))
 
 	spec, err := loadComposeSpec(composePath)
 	require.NoError(t, err)
 
 	service := spec.Services["otelcol"]
-	assert.Equal(t, "receivers: {}\n", service.Env["OTELCOL_CONFIG"])
+	assert.Equal(t, "hypeship-otel", spec.Name)
+	assert.Equal(t, "otel/opentelemetry-collector-contrib:0.108.0", service.Image)
+	assert.Equal(t, []string{"--config=env:OTELCOL_CONFIG"}, service.Cmd)
+	assert.Equal(t, "endpoint: https://otel.example.com\ntoken: collector-token\n", service.Env["OTELCOL_CONFIG"])
 	assert.Equal(t, "secret-token", service.Env["SIGNOZ_ACCESS_TOKEN"])
+	require.Len(t, service.Ingress, 1)
+	assert.Equal(t, "otel.example.com", service.Ingress[0].Hostname)
 }
 
 func TestBuildComposeInstanceInputIncludesPolicyFields(t *testing.T) {

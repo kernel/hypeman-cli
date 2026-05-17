@@ -87,17 +87,21 @@ hypeman.compose.hash
 
 The hash is computed from the rendered resource spec before ownership tags are added. Re-running the same file is idempotent: matching resources are reported as unchanged, changed managed resources require `--replace`, and unmanaged resources with the same name are reported as conflicts.
 
-### Environment Values
+### Interpolation
 
-Environment values can embed local files or environment variables:
+String values can embed local files or environment variables:
 
 ```yaml
+ingress:
+  - hostname: ${env:OTEL_COLLECTOR_VM_HOSTNAME}
+    target_port: 4318
+
 env:
   OTELCOL_CONFIG: ${file:otelcol.yaml}
   SIGNOZ_ACCESS_TOKEN: ${env:SIGNOZ_ACCESS_TOKEN}
 ```
 
-File paths are resolved relative to the compose file. Missing files or environment variables fail before any resources are applied.
+File paths are resolved relative to the compose file. Loaded file contents are rendered the same way, so an `otelcol.yaml` referenced with `${file:otelcol.yaml}` can contain `${env:OTEL_COLLECTOR_VM_TOKEN}` or another `${file:...}` reference. Missing files or environment variables fail before any resources are applied.
 
 ### Dockerfile Services
 
