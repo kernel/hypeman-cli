@@ -1,7 +1,12 @@
 package compose
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -211,6 +216,43 @@ services:
 	changed, _, _, _, err := runner.desiredResources()
 	require.NoError(t, err)
 	require.NotEqual(t, builds[0].Image, changed[0].Image)
+}
+
+func TestCreateSourceTarballHonorsDockerignore(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "keep.txt"), []byte("keep\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "ignored.tmp"), []byte("ignored\n"), 0644))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "nested"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nested", "keep.txt"), []byte("nested\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nested", "ignored.txt"), []byte("ignored\n"), 0644))
+
+	source, err := createSourceTarball(dir, []byte("*.tmp\nnested/*\n!nested/keep.txt\n"))
+	require.NoError(t, err)
+
+	entries := sourceTarEntries(t, source)
+	assert.Contains(t, entries, "keep.txt")
+	assert.Contains(t, entries, "nested/keep.txt")
+	assert.NotContains(t, entries, "ignored.tmp")
+	assert.NotContains(t, entries, "nested/ignored.txt")
+}
+
+func sourceTarEntries(t *testing.T, source []byte) []string {
+	t.Helper()
+	reader, err := gzip.NewReader(bytes.NewReader(source))
+	require.NoError(t, err)
+	defer reader.Close()
+
+	var entries []string
+	tarReader := tar.NewReader(reader)
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		entries = append(entries, header.Name)
+	}
+	return entries
 }
 
 func TestRunnableBuildImage(t *testing.T) {
