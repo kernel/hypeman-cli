@@ -37,6 +37,31 @@ services:
         tls: true
 ```
 
+By default, compose names resources from the compose name and service key:
+
+```text
+instance: <compose name>-<service>
+ingress:  <compose name>-<service>-<index>
+```
+
+Set `name` on a service or ingress rule when a stable external name is required:
+
+```yaml
+version: 1
+name: hypeship
+
+services:
+  otelcol:
+    name: hypeship-otelcol-${env:DEPLOY_ENV}
+    image: otel/opentelemetry-collector-contrib:0.108.0
+    ingress:
+      - name: hypeship-otelcol-${env:DEPLOY_ENV}-otlp
+        hostname: hypeship-otelcol-${env:DEPLOY_ENV}.dev-yul-hypeman-0.kernel.sh
+        host_port: 443
+        target_port: 3000
+        tls: true
+```
+
 ### Commands
 
 Preview the changes:

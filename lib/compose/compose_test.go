@@ -23,6 +23,7 @@ func TestLoadComposeSpecInterpolatesFilesAndEnv(t *testing.T) {
 	t.Setenv("COMPOSE_NAME", "hypeship-otel")
 	t.Setenv("OTEL_IMAGE", "otel/opentelemetry-collector-contrib:0.108.0")
 	t.Setenv("OTELCOL_ENV_NAME", "OTELCOL_CONFIG")
+	t.Setenv("DEPLOY_ENV", "staging")
 	t.Setenv("OTEL_COLLECTOR_VM_HOSTNAME", "otel.example.com")
 	t.Setenv("OTEL_COLLECTOR_VM_TOKEN", "collector-token")
 	t.Setenv("SIGNOZ_ACCESS_TOKEN", "secret-token")
@@ -33,13 +34,15 @@ version: 1
 name: ${env:COMPOSE_NAME}
 services:
   otelcol:
+    name: hypeship-otelcol-${env:DEPLOY_ENV}
     image: ${env:OTEL_IMAGE}
     cmd: ["--config=env:${env:OTELCOL_ENV_NAME}"]
     env:
       OTELCOL_CONFIG: ${file:otelcol.yaml}
       SIGNOZ_ACCESS_TOKEN: ${env:SIGNOZ_ACCESS_TOKEN}
     ingress:
-      - hostname: ${env:OTEL_COLLECTOR_VM_HOSTNAME}
+      - name: hypeship-otelcol-${env:DEPLOY_ENV}-otlp
+        hostname: ${env:OTEL_COLLECTOR_VM_HOSTNAME}
         target_port: 4318
 `), 0644))
 
@@ -48,11 +51,13 @@ services:
 
 	service := spec.Services["otelcol"]
 	assert.Equal(t, "hypeship-otel", spec.Name)
+	assert.Equal(t, "hypeship-otelcol-staging", service.Name)
 	assert.Equal(t, "otel/opentelemetry-collector-contrib:0.108.0", service.Image)
 	assert.Equal(t, []string{"--config=env:OTELCOL_CONFIG"}, service.Cmd)
 	assert.Equal(t, "endpoint: https://otel.example.com\ntoken: collector-token\n", service.Env["OTELCOL_CONFIG"])
 	assert.Equal(t, "secret-token", service.Env["SIGNOZ_ACCESS_TOKEN"])
 	require.Len(t, service.Ingress, 1)
+	assert.Equal(t, "hypeship-otelcol-staging-otlp", service.Ingress[0].Name)
 	assert.Equal(t, "otel.example.com", service.Ingress[0].Hostname)
 }
 
@@ -149,6 +154,45 @@ func TestDesiredResourcesUseDeterministicNamesAndTags(t *testing.T) {
 	assert.Equal(t, int64(4318), ingresses[0].Input.Rules[0].Target.Port)
 }
 
+func TestDesiredResourcesUseExplicitResourceNames(t *testing.T) {
+	runner := Runner{
+		spec: composeSpec{
+			Version: 1,
+			Name:    "hypeship",
+			Services: map[string]composeServiceSpec{
+				"otelcol": {
+					Name:  "hypeship-otelcol-staging",
+					Image: "otel/opentelemetry-collector-contrib:0.108.0",
+					Ingress: []composeIngressRuleSpec{
+						{
+							Name:       "hypeship-otelcol-staging-otlp",
+							Hostname:   "hypeship-otelcol-staging.dev-yul-hypeman-0.kernel.sh",
+							HostPort:   443,
+							TargetPort: 3000,
+							TLS:        true,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	_, instances, ingresses, _, err := runner.desiredResources()
+	require.NoError(t, err)
+
+	require.Len(t, instances, 1)
+	assert.Equal(t, "hypeship-otelcol-staging", instances[0].Name)
+	assert.Equal(t, "otelcol", instances[0].Service)
+	assert.Equal(t, "hypeship-otelcol-staging", instances[0].Input.Name)
+	assert.Equal(t, "otelcol", instances[0].Input.Tags[composeTagService])
+
+	require.Len(t, ingresses, 1)
+	assert.Equal(t, "hypeship-otelcol-staging-otlp", ingresses[0].Name)
+	assert.Equal(t, "hypeship-otelcol-staging", ingresses[0].Input.Rules[0].Target.Instance)
+	assert.Equal(t, int64(3000), ingresses[0].Input.Rules[0].Target.Port)
+	assert.Equal(t, "otelcol", ingresses[0].Input.Tags[composeTagService])
+}
+
 func TestValidateComposeSpecRejectsInvalidNames(t *testing.T) {
 	err := validateComposeSpec(&composeSpec{
 		Version: 1,
@@ -159,6 +203,40 @@ func TestValidateComposeSpecRejectsInvalidNames(t *testing.T) {
 	})
 
 	require.EqualError(t, err, "compose name must contain only lowercase letters, digits, and dashes")
+}
+
+func TestValidateComposeSpecRejectsInvalidExplicitResourceNames(t *testing.T) {
+	err := validateComposeSpec(&composeSpec{
+		Version: 1,
+		Name:    "worker-stack",
+		Services: map[string]composeServiceSpec{
+			"worker": {
+				Name:  "BadName",
+				Image: "alpine:latest",
+			},
+		},
+	})
+
+	require.EqualError(t, err, `service "worker" name must contain only lowercase letters, digits, and dashes`)
+}
+
+func TestValidateComposeSpecRejectsDuplicateExplicitResourceNames(t *testing.T) {
+	err := validateComposeSpec(&composeSpec{
+		Version: 1,
+		Name:    "worker-stack",
+		Services: map[string]composeServiceSpec{
+			"api": {
+				Name:  "shared-worker",
+				Image: "alpine:latest",
+			},
+			"worker": {
+				Name:  "shared-worker",
+				Image: "alpine:latest",
+			},
+		},
+	})
+
+	require.ErrorContains(t, err, `produces duplicate instance name "shared-worker"`)
 }
 
 func TestValidateComposeSpecRejectsImageAndDockerfile(t *testing.T) {
@@ -291,4 +369,110 @@ func TestConflictBlockers(t *testing.T) {
 	})
 
 	require.Equal(t, []string{"  instance app-api: name exists without compose ownership"}, blockers)
+}
+
+func TestPlanInstanceActionReplacesOwnedServiceWhenNameChanges(t *testing.T) {
+	desired := desiredInstance{
+		Name:    "hypeship-otelcol-production",
+		Service: "otelcol",
+		Hash:    "new-hash",
+		Input: hypeman.InstanceNewParams{
+			Name: "hypeship-otelcol-production",
+		},
+	}
+	owned := []hypeman.Instance{{
+		ID:   "old-instance-id",
+		Name: "hypeship-otelcol-staging",
+		Tags: composeTags("hypeship", "otelcol", composeResourceInstance, "old-hash"),
+	}}
+
+	action := planInstanceAction(desired, owned, nil)
+
+	assert.Equal(t, "replace", action.Action)
+	assert.Equal(t, "instance", action.Type)
+	assert.Equal(t, "hypeship-otelcol-production", action.Name)
+	assert.Equal(t, "name changed from hypeship-otelcol-staging", action.Reason)
+	assert.Equal(t, "old-instance-id", action.instanceID)
+}
+
+func TestPlanIngressActionReplacesOwnedServiceWhenNameChanges(t *testing.T) {
+	desired := desiredIngress{
+		Name:    "hypeship-otelcol-production-otlp",
+		Service: "otelcol",
+		Hash:    "new-hash",
+		Input: hypeman.IngressNewParams{
+			Name: "hypeship-otelcol-production-otlp",
+		},
+	}
+	owned := []hypeman.Ingress{{
+		ID:   "old-ingress-id",
+		Name: "hypeship-otelcol-staging-otlp",
+		Tags: composeTags("hypeship", "otelcol", composeResourceIngress, "old-hash"),
+	}}
+
+	action := planIngressAction(desired, owned, nil, map[string]struct{}{
+		"hypeship-otelcol-production-otlp": {},
+	})
+
+	assert.Equal(t, "replace", action.Action)
+	assert.Equal(t, "ingress", action.Type)
+	assert.Equal(t, "hypeship-otelcol-production-otlp", action.Name)
+	assert.Equal(t, "name changed from hypeship-otelcol-staging-otlp", action.Reason)
+	assert.Equal(t, "old-ingress-id", action.ingressID)
+}
+
+func TestPlanIngressActionDoesNotReplaceIngressStillDesiredByAnotherRule(t *testing.T) {
+	desired := desiredIngress{
+		Name:    "app-api-grpc",
+		Service: "api",
+		Hash:    "grpc-hash",
+		Input: hypeman.IngressNewParams{
+			Name: "app-api-grpc",
+		},
+	}
+	owned := []hypeman.Ingress{{
+		ID:   "http-ingress-id",
+		Name: "app-api-http",
+		Tags: composeTags("app", "api", composeResourceIngress, "http-hash"),
+	}}
+
+	action := planIngressAction(desired, owned, nil, map[string]struct{}{
+		"app-api-http": {},
+		"app-api-grpc": {},
+	})
+
+	assert.Equal(t, "create", action.Action)
+	assert.Equal(t, "missing", action.Reason)
+	assert.Empty(t, action.ingressID)
+}
+
+func TestPlanIngressActionConflictsWhenRenameCandidateIsAmbiguous(t *testing.T) {
+	desired := desiredIngress{
+		Name:    "app-api-public",
+		Service: "api",
+		Hash:    "public-hash",
+		Input: hypeman.IngressNewParams{
+			Name: "app-api-public",
+		},
+	}
+	owned := []hypeman.Ingress{
+		{
+			ID:   "old-http-id",
+			Name: "app-api-http",
+			Tags: composeTags("app", "api", composeResourceIngress, "http-hash"),
+		},
+		{
+			ID:   "old-grpc-id",
+			Name: "app-api-grpc",
+			Tags: composeTags("app", "api", composeResourceIngress, "grpc-hash"),
+		},
+	}
+
+	action := planIngressAction(desired, owned, nil, map[string]struct{}{
+		"app-api-public": {},
+	})
+
+	assert.Equal(t, "conflict", action.Action)
+	assert.Equal(t, "multiple owned ingresses for service have changed names", action.Reason)
+	assert.Empty(t, action.ingressID)
 }

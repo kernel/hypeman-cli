@@ -59,8 +59,9 @@ func (r *Runner) Plan(ctx context.Context) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
+	desiredIngressNames := desiredIngressNamesByService(desiredIngresses)
 	for _, ingress := range desiredIngresses {
-		actions = append(actions, planIngressAction(ingress, existingIngresses, *allIngresses))
+		actions = append(actions, planIngressAction(ingress, existingIngresses, *allIngresses, desiredIngressNames[ingress.Service]))
 	}
 
 	return Plan{
@@ -177,7 +178,7 @@ func (r *Runner) Down(ctx context.Context, verbose bool) (Plan, error) {
 				result.Actions = append(result.Actions, Action{
 					Action:  "skip",
 					Type:    "ingress",
-					Name:    composeIngressName(r.spec.Name, serviceName, i),
+					Name:    composeIngressName(r.spec.Name, serviceName, i, service.Ingress[i]),
 					Service: serviceName,
 					Reason:  "not found",
 				})
@@ -185,7 +186,7 @@ func (r *Runner) Down(ctx context.Context, verbose bool) (Plan, error) {
 			result.Actions = append(result.Actions, Action{
 				Action:  "skip",
 				Type:    "instance",
-				Name:    composeInstanceName(r.spec.Name, serviceName),
+				Name:    composeInstanceName(r.spec.Name, serviceName, service),
 				Service: serviceName,
 				Reason:  "not found",
 			})
@@ -387,6 +388,15 @@ func planInstanceAction(desired desiredInstance, owned []hypeman.Instance, all [
 		}
 		return action
 	}
+	for _, inst := range owned {
+		if inst.Tags[composeTagService] != desired.Service || inst.Tags[composeTagResource] != composeResourceInstance {
+			continue
+		}
+		action.Action = "replace"
+		action.Reason = fmt.Sprintf("name changed from %s", inst.Name)
+		action.instanceID = inst.ID
+		return action
+	}
 	for _, inst := range all {
 		if inst.Name == desired.Name {
 			action.Action = "conflict"
@@ -400,7 +410,7 @@ func planInstanceAction(desired desiredInstance, owned []hypeman.Instance, all [
 	return action
 }
 
-func planIngressAction(desired desiredIngress, owned []hypeman.Ingress, all []hypeman.Ingress) Action {
+func planIngressAction(desired desiredIngress, owned []hypeman.Ingress, all []hypeman.Ingress, desiredServiceIngressNames map[string]struct{}) Action {
 	action := Action{
 		Type:         "ingress",
 		Name:         desired.Name,
@@ -425,6 +435,28 @@ func planIngressAction(desired desiredIngress, owned []hypeman.Ingress, all []hy
 		}
 		return action
 	}
+	var renameCandidates []hypeman.Ingress
+	for _, ing := range owned {
+		if ing.Tags[composeTagService] != desired.Service || ing.Tags[composeTagResource] != composeResourceIngress {
+			continue
+		}
+		if _, stillDesired := desiredServiceIngressNames[ing.Name]; stillDesired {
+			continue
+		}
+		renameCandidates = append(renameCandidates, ing)
+	}
+	if len(renameCandidates) == 1 {
+		ing := renameCandidates[0]
+		action.Action = "replace"
+		action.Reason = fmt.Sprintf("name changed from %s", ing.Name)
+		action.ingressID = ing.ID
+		return action
+	}
+	if len(renameCandidates) > 1 {
+		action.Action = "conflict"
+		action.Reason = "multiple owned ingresses for service have changed names"
+		return action
+	}
 	for _, ing := range all {
 		if ing.Name == desired.Name {
 			action.Action = "conflict"
@@ -436,6 +468,17 @@ func planIngressAction(desired desiredIngress, owned []hypeman.Ingress, all []hy
 	action.Action = "create"
 	action.Reason = "missing"
 	return action
+}
+
+func desiredIngressNamesByService(ingresses []desiredIngress) map[string]map[string]struct{} {
+	names := map[string]map[string]struct{}{}
+	for _, ingress := range ingresses {
+		if names[ingress.Service] == nil {
+			names[ingress.Service] = map[string]struct{}{}
+		}
+		names[ingress.Service][ingress.Name] = struct{}{}
+	}
+	return names
 }
 
 func (r *Runner) listComposeInstances(ctx context.Context) ([]hypeman.Instance, error) {

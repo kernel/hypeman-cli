@@ -18,6 +18,7 @@ type composeSpec struct {
 }
 
 type composeServiceSpec struct {
+	Name       string                   `json:"name,omitempty" yaml:"name"`
 	Image      string                   `json:"image" yaml:"image"`
 	Dockerfile string                   `json:"dockerfile,omitempty" yaml:"dockerfile"`
 	Entrypoint []string                 `json:"entrypoint,omitempty" yaml:"entrypoint"`
@@ -75,6 +76,7 @@ type composeExecCheckSpec struct {
 }
 
 type composeIngressRuleSpec struct {
+	Name         string `json:"name,omitempty" yaml:"name"`
 	Hostname     string `json:"hostname" yaml:"hostname"`
 	HostPort     int    `json:"host_port,omitempty" yaml:"host_port"`
 	TargetPort   int    `json:"target_port" yaml:"target_port"`
@@ -116,14 +118,23 @@ func validateComposeSpec(spec *composeSpec) error {
 		return fmt.Errorf("compose services must include at least one service")
 	}
 
+	instanceNames := map[string]string{}
+	ingressNames := map[string]string{}
 	for name, service := range spec.Services {
 		if !composeNamePattern.MatchString(name) {
 			return fmt.Errorf("service %q must contain only lowercase letters, digits, and dashes", name)
 		}
-		instanceName := composeInstanceName(spec.Name, name)
+		instanceName := composeInstanceName(spec.Name, name, service)
+		if service.Name != "" && !composeNamePattern.MatchString(service.Name) {
+			return fmt.Errorf("service %q name must contain only lowercase letters, digits, and dashes", name)
+		}
 		if len(instanceName) > 63 {
 			return fmt.Errorf("service %q produces instance name %q longer than 63 characters", name, instanceName)
 		}
+		if existing, ok := instanceNames[instanceName]; ok {
+			return fmt.Errorf("service %q produces duplicate instance name %q already used by service %q", name, instanceName, existing)
+		}
+		instanceNames[instanceName] = name
 		if service.Image == "" && service.Dockerfile == "" {
 			return fmt.Errorf("service %q image or dockerfile is required", name)
 		}
@@ -131,6 +142,14 @@ func validateComposeSpec(spec *composeSpec) error {
 			return fmt.Errorf("service %q cannot include both image and dockerfile", name)
 		}
 		for i, rule := range service.Ingress {
+			ingressName := composeIngressName(spec.Name, name, i, rule)
+			if rule.Name != "" && !composeNamePattern.MatchString(rule.Name) {
+				return fmt.Errorf("service %q ingress %d name must contain only lowercase letters, digits, and dashes", name, i)
+			}
+			if existing, ok := ingressNames[ingressName]; ok {
+				return fmt.Errorf("service %q ingress %d produces duplicate ingress name %q already used by %s", name, i, ingressName, existing)
+			}
+			ingressNames[ingressName] = fmt.Sprintf("service %q ingress %d", name, i)
 			if rule.Hostname == "" {
 				return fmt.Errorf("service %q ingress %d hostname is required", name, i)
 			}
