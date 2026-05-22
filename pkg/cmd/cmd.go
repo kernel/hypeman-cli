@@ -93,6 +93,7 @@ func init() {
 			&volumeCmd,
 			&resourcesCmd,
 			&deviceCmd,
+			&composeCmd,
 			{
 				Name:            "@manpages",
 				Usage:           "Generate documentation for 'man'",
