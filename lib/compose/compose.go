@@ -13,6 +13,7 @@ const (
 
 	composeResourceInstance = "instance"
 	composeResourceIngress  = "ingress"
+	composeResourceBuild    = "build"
 )
 
 type Runner struct {
@@ -56,6 +57,7 @@ type Action struct {
 	ingressID     string
 	instanceInput hypeman.InstanceNewParams
 	ingressInput  hypeman.IngressNewParams
+	buildInput    *desiredBuild
 }
 
 func NewRunner(file string, client hypeman.Client, opts ...option.RequestOption) (*Runner, error) {

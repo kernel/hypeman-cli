@@ -13,12 +13,24 @@ import (
 )
 
 func (r *Runner) Plan(ctx context.Context) (Plan, error) {
-	desiredInstances, desiredIngresses, images, err := r.desiredResources()
+	desiredBuilds, desiredInstances, desiredIngresses, images, err := r.desiredResources()
 	if err != nil {
 		return Plan{}, err
 	}
 
 	var actions []Action
+	for _, build := range desiredBuilds {
+		action, err := r.planBuild(ctx, build)
+		if err != nil {
+			return Plan{}, err
+		}
+		if action.buildInput != nil && action.buildInput.ImageRef != "" {
+			if err := updateDesiredInstanceImage(desiredInstances, r.spec.Name, build.Service, action.buildInput.ImageRef); err != nil {
+				return Plan{}, err
+			}
+		}
+		actions = append(actions, action)
+	}
 	for _, image := range images {
 		action, err := r.planImage(ctx, image)
 		if err != nil {
@@ -81,6 +93,11 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (Plan, error) {
 			if err := r.applyCreate(ctx, action, opts); err != nil {
 				return result, err
 			}
+			if action.Type == "build" {
+				if err := updatePlannedInstanceImage(result.Actions, r.spec.Name, action.Service, action.Name); err != nil {
+					return result, err
+				}
+			}
 		case "replace":
 			if opts.Verbose {
 				fmt.Fprintf(os.Stderr, "[replace] %s %s\n", action.Type, action.Name)
@@ -91,6 +108,15 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (Plan, error) {
 		case "unchanged":
 			if opts.Verbose {
 				fmt.Fprintf(os.Stderr, "[skip] %s %s unchanged\n", action.Type, action.Name)
+			}
+			if action.Type == "build" && action.buildInput != nil && action.buildInput.ImageRef != "" {
+				action.Name = action.buildInput.ImageRef
+				if err := updatePlannedInstanceImage(result.Actions, r.spec.Name, action.Service, action.Name); err != nil {
+					return result, err
+				}
+				if err := r.ensureImageReady(ctx, action.Name, opts.Verbose); err != nil {
+					return result, err
+				}
 			}
 			if action.Type == "image" {
 				if err := r.ensureImageReady(ctx, action.Name, opts.Verbose); err != nil {
@@ -145,20 +171,17 @@ func (r *Runner) Down(ctx context.Context, verbose bool) (Plan, error) {
 		Summary: summarizeComposeActions(actions),
 	}
 	if len(actions) == 0 {
-		_, desiredIngresses, _, err := r.desiredResources()
-		if err != nil {
-			return Plan{}, err
-		}
-		for _, ingress := range desiredIngresses {
-			result.Actions = append(result.Actions, Action{
-				Action:  "skip",
-				Type:    "ingress",
-				Name:    ingress.Name,
-				Service: ingress.Service,
-				Reason:  "not found",
-			})
-		}
 		for serviceName := range r.spec.Services {
+			service := r.spec.Services[serviceName]
+			for i := range service.Ingress {
+				result.Actions = append(result.Actions, Action{
+					Action:  "skip",
+					Type:    "ingress",
+					Name:    composeIngressName(r.spec.Name, serviceName, i),
+					Service: serviceName,
+					Reason:  "not found",
+				})
+			}
 			result.Actions = append(result.Actions, Action{
 				Action:  "skip",
 				Type:    "instance",
@@ -194,6 +217,21 @@ func (r *Runner) Down(ctx context.Context, verbose bool) (Plan, error) {
 
 func (r *Runner) applyCreate(ctx context.Context, action *Action, opts UpOptions) error {
 	switch action.Type {
+	case "build":
+		if action.buildInput == nil {
+			return fmt.Errorf("build action %s missing build input", action.Name)
+		}
+		imageRef, err := r.runBuild(ctx, *action.buildInput, opts.Verbose)
+		if err != nil {
+			return err
+		}
+		if imageRef != "" {
+			action.Name = imageRef
+		}
+		if err := r.ensureImageReady(ctx, action.Name, opts.Verbose); err != nil {
+			return err
+		}
+		return nil
 	case "image":
 		return r.ensureImageReady(ctx, action.Name, opts.Verbose)
 	case "instance":
@@ -462,6 +500,25 @@ func summarizeComposeActions(actions []Action) Summary {
 		}
 	}
 	return summary
+}
+
+func updatePlannedInstanceImage(actions []Action, composeName, serviceName, image string) error {
+	if image == "" {
+		return nil
+	}
+	for i := range actions {
+		if actions[i].Type != "instance" || actions[i].Service != serviceName {
+			continue
+		}
+		actions[i].instanceInput.Image = image
+		actions[i].instanceInput.Tags = nil
+		hash, err := shortHash(actions[i].instanceInput)
+		if err != nil {
+			return err
+		}
+		actions[i].instanceInput.Tags = composeTags(composeName, serviceName, composeResourceInstance, hash)
+	}
+	return nil
 }
 
 func isHTTPNotFound(err error) bool {

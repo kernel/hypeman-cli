@@ -2,7 +2,7 @@
 
 ## Compose
 
-`hypeman compose` is a lightweight way to declare a small workload for Hypeman.
+`hypeman compose` is a lightweight way to declare a small workload for Hypeman from images or Dockerfiles.
 
 
 ```yaml
@@ -69,9 +69,10 @@ All compose commands honor global output flags such as `--format json`, `--forma
 
 `up` applies the plan in order:
 
-1. ensure referenced images exist and are ready
-2. create or replace instances
-3. create or replace ingresses
+1. build Dockerfile services whose generated images are missing
+2. ensure referenced images exist and are ready
+3. create or replace instances
+4. create or replace ingresses
 
 `down` deletes only instances and ingresses tagged as owned by the compose file. Images are left in place because they can be shared by normal `hypeman run` usage or other compose files.
 
@@ -86,17 +87,42 @@ hypeman.compose.hash
 
 The hash is computed from the rendered resource spec before ownership tags are added. Re-running the same file is idempotent: matching resources are reported as unchanged, changed managed resources require `--replace`, and unmanaged resources with the same name are reported as conflicts.
 
-### Environment Values
+### Interpolation
 
-Environment values can embed local files or environment variables:
+String values can embed local files or environment variables:
 
 ```yaml
+ingress:
+  - hostname: ${env:OTEL_COLLECTOR_VM_HOSTNAME}
+    target_port: 4318
+
 env:
   OTELCOL_CONFIG: ${file:otelcol.yaml}
   SIGNOZ_ACCESS_TOKEN: ${env:SIGNOZ_ACCESS_TOKEN}
 ```
 
-File paths are resolved relative to the compose file. Missing files or environment variables fail before any resources are applied.
+File paths are resolved relative to the compose file. Loaded file contents are rendered the same way, so an `otelcol.yaml` referenced with `${file:otelcol.yaml}` can contain `${env:OTEL_COLLECTOR_VM_TOKEN}` or another `${file:...}` reference. Missing files or environment variables fail before any resources are applied.
+
+### Dockerfile Services
+
+A service can use `dockerfile` instead of `image`:
+
+```yaml
+services:
+  worker:
+    dockerfile: ./Dockerfile
+    cmd: ["./worker"]
+    env:
+      CONFIG: ${file:worker.yaml}
+    restart:
+      policy: on_failure
+```
+
+The Dockerfile path is resolved relative to the compose file. The build context is the directory containing that Dockerfile. `compose up` creates a source archive, starts a Hypeman build, waits for the generated image to become ready, then creates the instance from that image.
+
+Compose generates the build image name from the compose name, service name, Dockerfile, and build context hash. Re-running the same file reuses the existing image; changing the Dockerfile or context produces a new image name and makes the managed instance require replacement.
+
+`image` and `dockerfile` are mutually exclusive for now. Use `image` for off-the-shelf images and `dockerfile` for Hypeman-built images.
 
 ### OTel Collector Example
 

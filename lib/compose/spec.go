@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -18,6 +19,7 @@ type composeSpec struct {
 
 type composeServiceSpec struct {
 	Image      string                   `json:"image" yaml:"image"`
+	Dockerfile string                   `json:"dockerfile,omitempty" yaml:"dockerfile"`
 	Entrypoint []string                 `json:"entrypoint,omitempty" yaml:"entrypoint"`
 	Cmd        []string                 `json:"cmd,omitempty" yaml:"cmd"`
 	Env        map[string]string        `json:"env,omitempty" yaml:"env"`
@@ -89,10 +91,10 @@ func loadComposeSpec(path string) (composeSpec, error) {
 	if err := yaml.Unmarshal(data, &spec); err != nil {
 		return composeSpec{}, fmt.Errorf("parse compose file: %w", err)
 	}
-	if err := validateComposeSpec(&spec); err != nil {
+	if err := interpolateComposeSpec(&spec, filepath.Dir(path)); err != nil {
 		return composeSpec{}, err
 	}
-	if err := interpolateComposeSpec(&spec, filepath.Dir(path)); err != nil {
+	if err := validateComposeSpec(&spec); err != nil {
 		return composeSpec{}, err
 	}
 	return spec, nil
@@ -122,8 +124,11 @@ func validateComposeSpec(spec *composeSpec) error {
 		if len(instanceName) > 63 {
 			return fmt.Errorf("service %q produces instance name %q longer than 63 characters", name, instanceName)
 		}
-		if service.Image == "" {
-			return fmt.Errorf("service %q image is required", name)
+		if service.Image == "" && service.Dockerfile == "" {
+			return fmt.Errorf("service %q image or dockerfile is required", name)
+		}
+		if service.Image != "" && service.Dockerfile != "" {
+			return fmt.Errorf("service %q cannot include both image and dockerfile", name)
 		}
 		for i, rule := range service.Ingress {
 			if rule.Hostname == "" {
@@ -143,20 +148,79 @@ func validateComposeSpec(spec *composeSpec) error {
 var composeInterpolationPattern = regexp.MustCompile(`\$\{(file|env):([^}]+)\}`)
 
 func interpolateComposeSpec(spec *composeSpec, baseDir string) error {
-	for serviceName, service := range spec.Services {
-		for key, value := range service.Env {
-			resolved, err := interpolateComposeValue(value, baseDir)
-			if err != nil {
-				return fmt.Errorf("service %q env %s: %w", serviceName, key, err)
-			}
-			service.Env[key] = resolved
+	return interpolateComposeFields(reflect.ValueOf(spec).Elem(), baseDir, "compose")
+}
+
+func interpolateComposeFields(value reflect.Value, baseDir, path string) error {
+	if !value.IsValid() {
+		return nil
+	}
+	switch value.Kind() {
+	case reflect.Pointer:
+		if value.IsNil() {
+			return nil
 		}
-		spec.Services[serviceName] = service
+		return interpolateComposeFields(value.Elem(), baseDir, path)
+	case reflect.String:
+		resolved, err := interpolateComposeValue(value.String(), baseDir)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		value.SetString(resolved)
+	case reflect.Struct:
+		valueType := value.Type()
+		for i := 0; i < value.NumField(); i++ {
+			field := valueType.Field(i)
+			if field.PkgPath != "" {
+				continue
+			}
+			name := composeYAMLFieldName(field)
+			if name == "" {
+				continue
+			}
+			if err := interpolateComposeFields(value.Field(i), baseDir, path+"."+name); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice:
+		for i := 0; i < value.Len(); i++ {
+			if err := interpolateComposeFields(value.Index(i), baseDir, fmt.Sprintf("%s.%d", path, i)); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		for _, key := range value.MapKeys() {
+			item := reflect.New(value.Type().Elem()).Elem()
+			item.Set(value.MapIndex(key))
+			if err := interpolateComposeFields(item, baseDir, path+"."+fmt.Sprint(key.Interface())); err != nil {
+				return err
+			}
+			value.SetMapIndex(key, item)
+		}
 	}
 	return nil
 }
 
+func composeYAMLFieldName(field reflect.StructField) string {
+	tag := field.Tag.Get("yaml")
+	name, _, _ := strings.Cut(tag, ",")
+	if name == "-" {
+		return ""
+	}
+	if name != "" {
+		return name
+	}
+	return field.Name
+}
+
 func interpolateComposeValue(value, baseDir string) (string, error) {
+	return interpolateComposeValueDepth(value, baseDir, 0)
+}
+
+func interpolateComposeValueDepth(value, baseDir string, depth int) (string, error) {
+	if depth > 16 {
+		return "", fmt.Errorf("interpolation depth exceeded")
+	}
 	var out strings.Builder
 	last := 0
 	matches := composeInterpolationPattern.FindAllStringSubmatchIndex(value, -1)
@@ -180,7 +244,11 @@ func interpolateComposeValue(value, baseDir string) (string, error) {
 			if err != nil {
 				return "", fmt.Errorf("read file %s: %w", arg, err)
 			}
-			out.Write(data)
+			rendered, err := interpolateComposeValueDepth(string(data), baseDir, depth+1)
+			if err != nil {
+				return "", fmt.Errorf("render file %s: %w", arg, err)
+			}
+			out.WriteString(rendered)
 		}
 		last = match[1]
 	}

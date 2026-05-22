@@ -1,39 +1,59 @@
 package compose
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/kernel/hypeman-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestLoadComposeSpecInterpolatesFilesAndEnv(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "otelcol.yaml"), []byte("receivers: {}\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "otelcol.yaml"), []byte("endpoint: https://${env:OTEL_COLLECTOR_VM_HOSTNAME}\ntoken: ${file:token.txt}\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "token.txt"), []byte("${env:OTEL_COLLECTOR_VM_TOKEN}"), 0644))
+	t.Setenv("COMPOSE_NAME", "hypeship-otel")
+	t.Setenv("OTEL_IMAGE", "otel/opentelemetry-collector-contrib:0.108.0")
+	t.Setenv("OTELCOL_ENV_NAME", "OTELCOL_CONFIG")
+	t.Setenv("OTEL_COLLECTOR_VM_HOSTNAME", "otel.example.com")
+	t.Setenv("OTEL_COLLECTOR_VM_TOKEN", "collector-token")
 	t.Setenv("SIGNOZ_ACCESS_TOKEN", "secret-token")
 
 	composePath := filepath.Join(dir, "hypeman.compose.yaml")
 	require.NoError(t, os.WriteFile(composePath, []byte(`
 version: 1
-name: hypeship-otel
+name: ${env:COMPOSE_NAME}
 services:
   otelcol:
-    image: otel/opentelemetry-collector-contrib:0.108.0
-    cmd: ["--config=env:OTELCOL_CONFIG"]
+    image: ${env:OTEL_IMAGE}
+    cmd: ["--config=env:${env:OTELCOL_ENV_NAME}"]
     env:
       OTELCOL_CONFIG: ${file:otelcol.yaml}
       SIGNOZ_ACCESS_TOKEN: ${env:SIGNOZ_ACCESS_TOKEN}
+    ingress:
+      - hostname: ${env:OTEL_COLLECTOR_VM_HOSTNAME}
+        target_port: 4318
 `), 0644))
 
 	spec, err := loadComposeSpec(composePath)
 	require.NoError(t, err)
 
 	service := spec.Services["otelcol"]
-	assert.Equal(t, "receivers: {}\n", service.Env["OTELCOL_CONFIG"])
+	assert.Equal(t, "hypeship-otel", spec.Name)
+	assert.Equal(t, "otel/opentelemetry-collector-contrib:0.108.0", service.Image)
+	assert.Equal(t, []string{"--config=env:OTELCOL_CONFIG"}, service.Cmd)
+	assert.Equal(t, "endpoint: https://otel.example.com\ntoken: collector-token\n", service.Env["OTELCOL_CONFIG"])
 	assert.Equal(t, "secret-token", service.Env["SIGNOZ_ACCESS_TOKEN"])
+	require.Len(t, service.Ingress, 1)
+	assert.Equal(t, "otel.example.com", service.Ingress[0].Hostname)
 }
 
 func TestBuildComposeInstanceInputIncludesPolicyFields(t *testing.T) {
@@ -113,7 +133,7 @@ func TestDesiredResourcesUseDeterministicNamesAndTags(t *testing.T) {
 		},
 	}
 
-	instances, ingresses, images, err := runner.desiredResources()
+	_, instances, ingresses, images, err := runner.desiredResources()
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"otel/opentelemetry-collector-contrib:0.108.0"}, images)
@@ -139,6 +159,129 @@ func TestValidateComposeSpecRejectsInvalidNames(t *testing.T) {
 	})
 
 	require.EqualError(t, err, "compose name must contain only lowercase letters, digits, and dashes")
+}
+
+func TestValidateComposeSpecRejectsImageAndDockerfile(t *testing.T) {
+	err := validateComposeSpec(&composeSpec{
+		Version: 1,
+		Name:    "worker-stack",
+		Services: map[string]composeServiceSpec{
+			"worker": {Image: "alpine:latest", Dockerfile: "./Dockerfile"},
+		},
+	})
+
+	require.EqualError(t, err, `service "worker" cannot include both image and dockerfile`)
+}
+
+func TestDesiredResourcesBuildsDockerfileService(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte("FROM alpine:latest\nCOPY worker /worker\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "worker"), []byte("echo ok\n"), 0644))
+
+	composePath := filepath.Join(dir, "hypeman.compose.yaml")
+	require.NoError(t, os.WriteFile(composePath, []byte(`
+version: 1
+name: worker-stack
+services:
+  worker:
+    dockerfile: ./Dockerfile
+    cmd: ["./worker"]
+`), 0644))
+
+	spec, err := loadComposeSpec(composePath)
+	require.NoError(t, err)
+
+	runner := Runner{file: composePath, spec: spec}
+	builds, instances, _, images, err := runner.desiredResources()
+	require.NoError(t, err)
+
+	require.Empty(t, images)
+	require.Len(t, builds, 1)
+	require.Len(t, instances, 1)
+	assert.Equal(t, "worker", builds[0].Service)
+	assert.Regexp(t, `^compose/worker-stack/worker:[a-f0-9]{12}$`, builds[0].Image)
+	assert.Equal(t, builds[0].Image, instances[0].Input.Image)
+
+	again, _, _, _, err := runner.desiredResources()
+	require.NoError(t, err)
+	require.Equal(t, builds[0].Image, again[0].Image)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".dockerignore"), []byte("*.tmp\n"), 0644))
+	dockerignoreChanged, _, _, _, err := runner.desiredResources()
+	require.NoError(t, err)
+	require.NotEqual(t, builds[0].Image, dockerignoreChanged[0].Image)
+
+	require.NoError(t, os.Remove(filepath.Join(dir, ".dockerignore")))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "worker"), []byte("echo changed\n"), 0644))
+	changed, _, _, _, err := runner.desiredResources()
+	require.NoError(t, err)
+	require.NotEqual(t, builds[0].Image, changed[0].Image)
+}
+
+func TestCreateSourceTarballHonorsDockerignore(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "keep.txt"), []byte("keep\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "ignored.tmp"), []byte("ignored\n"), 0644))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "nested"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nested", "keep.txt"), []byte("nested\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nested", "ignored.txt"), []byte("ignored\n"), 0644))
+
+	source, err := createSourceTarball(dir, []byte("*.tmp\nnested/*\n!nested/keep.txt\n"))
+	require.NoError(t, err)
+
+	entries := sourceTarEntries(t, source)
+	assert.Contains(t, entries, "keep.txt")
+	assert.Contains(t, entries, "nested/keep.txt")
+	assert.NotContains(t, entries, "ignored.tmp")
+	assert.NotContains(t, entries, "nested/ignored.txt")
+}
+
+func sourceTarEntries(t *testing.T, source []byte) []string {
+	t.Helper()
+	reader, err := gzip.NewReader(bytes.NewReader(source))
+	require.NoError(t, err)
+	defer reader.Close()
+
+	var entries []string
+	tarReader := tar.NewReader(reader)
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		entries = append(entries, header.Name)
+	}
+	return entries
+}
+
+func TestRunnableBuildImage(t *testing.T) {
+	assert.Equal(t, "builds/build-id", runnableBuildImage(&hypeman.Build{
+		ID:       "build-id",
+		ImageRef: "builds/build-id",
+	}))
+	assert.Equal(t, "docker.io/builds/build-id:latest", runnableBuildImage(&hypeman.Build{
+		ID: "build-id",
+	}))
+}
+
+func TestUpdateDesiredInstanceImageRehashesTags(t *testing.T) {
+	instances := []desiredInstance{{
+		Service: "worker",
+		Input: hypeman.InstanceNewParams{
+			Name:  "worker-stack-worker",
+			Image: "compose/worker-stack/worker:original",
+			Tags:  composeTags("worker-stack", "worker", composeResourceInstance, "old-hash"),
+		},
+	}}
+
+	require.NoError(t, updateDesiredInstanceImage(instances, "worker-stack", "worker", "builds/build-id"))
+
+	assert.Equal(t, "builds/build-id", instances[0].Input.Image)
+	tags := instances[0].Input.Tags
+	assert.Equal(t, composeResourceInstance, tags[composeTagResource])
+	assert.NotEqual(t, "old-hash", tags[composeTagHash])
+	assert.Equal(t, instances[0].Hash, tags[composeTagHash])
 }
 
 func TestConflictBlockers(t *testing.T) {
