@@ -76,6 +76,7 @@ func handleImageList(ctx context.Context, cmd *cli.Command) error {
 	if cmd.Root().Bool("debug") {
 		opts = append(opts, debugMiddlewareOption)
 	}
+	opts = append(opts, imageCreateRequestOptions(cmd)...)
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
@@ -194,6 +195,10 @@ func imageCreateFlags() []cli.Flag {
 			Name:  "tag",
 			Usage: "Set image tag key-value pair (KEY=VALUE, can be repeated)",
 		},
+		&cli.StringFlag{
+			Name:  "platform",
+			Usage: `Target platform as os/arch[/variant] (e.g., "linux/amd64")`,
+		},
 	}
 }
 
@@ -206,6 +211,13 @@ func buildImageNewParams(name string, tagSpecs []string) (hypeman.ImageNewParams
 	}
 
 	return params, malformedTags
+}
+
+func imageCreateRequestOptions(cmd *cli.Command) []option.RequestOption {
+	if platform := cmd.String("platform"); platform != "" {
+		return []option.RequestOption{option.WithJSONSet("platform", platform)}
+	}
+	return nil
 }
 
 func handleImageGet(ctx context.Context, cmd *cli.Command) error {
