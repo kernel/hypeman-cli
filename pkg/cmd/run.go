@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -203,8 +204,7 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 	imgInfo, err := client.Images.Get(ctx, url.PathEscape(image))
 	if err != nil {
 		// Image not found, try to pull it
-		var apiErr *hypeman.Error
-		if ok := isNotFoundError(err, &apiErr); ok {
+		if isNotFoundError(err) {
 			fmt.Fprintf(os.Stderr, "Image not found locally. Pulling %s...\n", image)
 			imgInfo, err = client.Images.New(ctx, hypeman.ImageNewParams{
 				Name: image,
@@ -460,9 +460,9 @@ func instanceCreateOptionsForPlatform(platform string) []option.RequestOption {
 }
 
 // isNotFoundError checks if err is a 404 not found error
-func isNotFoundError(err error, target **hypeman.Error) bool {
-	if apiErr, ok := err.(*hypeman.Error); ok {
-		*target = apiErr
+func isNotFoundError(err error) bool {
+	var apiErr *hypeman.Error
+	if errors.As(err, &apiErr) {
 		return apiErr.Response != nil && apiErr.Response.StatusCode == 404
 	}
 	return false
@@ -494,6 +494,12 @@ func waitForImageReady(ctx context.Context, client *hypeman.Client, img *hypeman
 		case <-ticker.C:
 			updated, err := client.Images.Get(ctx, url.PathEscape(img.Name))
 			if err != nil {
+				// A cold pull's record may briefly 404 before it is queryable.
+				// Treat that as "still pulling" and keep polling rather than
+				// surfacing a confusing not-found error for an in-flight pull.
+				if isNotFoundError(err) {
+					continue
+				}
 				return fmt.Errorf("failed to check image status: %w", err)
 			}
 

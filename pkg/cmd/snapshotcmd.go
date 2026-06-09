@@ -64,9 +64,10 @@ var snapshotCreateCmd = cli.Command{
 }
 
 var snapshotRestoreCmd = cli.Command{
-	Name:      "restore",
-	Usage:     "Restore an instance from a snapshot",
-	ArgsUsage: "<instance> <snapshot-id>",
+	Name:        "restore",
+	Usage:       "Restore an instance from a snapshot",
+	Description: "The target instance must not be Running; stop or standby it first (restoring a Running instance returns 409 invalid_state).",
+	ArgsUsage:   "<instance> <snapshot-id>",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:  "target-hypervisor",
