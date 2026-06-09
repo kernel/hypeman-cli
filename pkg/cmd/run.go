@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -24,6 +25,9 @@ var runCmd = cli.Command{
 Examples:
   # Basic run
   hypeman run myimage:latest
+
+  # Run an amd64 image on Apple Silicon via Rosetta
+  hypeman run --platform linux/amd64 --hypervisor vz docker.io/library/alpine:3.19
 
   # Run with custom resources
   hypeman run --cpus 4 --memory 8GB myimage:latest
@@ -52,6 +56,10 @@ Examples:
 		&cli.StringFlag{
 			Name:  "credentials-json",
 			Usage: "Credential policy map as JSON (keyed by guest-visible env var)",
+		},
+		&cli.StringFlag{
+			Name:  "platform",
+			Usage: `Target platform as os/arch[/variant] (e.g., "linux/amd64")`,
 		},
 		&cli.StringFlag{
 			Name:  "memory",
@@ -187,6 +195,7 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	image := args[0]
+	platform := cmd.String("platform")
 
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 
@@ -195,12 +204,11 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 	imgInfo, err := client.Images.Get(ctx, url.PathEscape(image))
 	if err != nil {
 		// Image not found, try to pull it
-		var apiErr *hypeman.Error
-		if ok := isNotFoundError(err, &apiErr); ok {
+		if isNotFoundError(err) {
 			fmt.Fprintf(os.Stderr, "Image not found locally. Pulling %s...\n", image)
 			imgInfo, err = client.Images.New(ctx, hypeman.ImageNewParams{
 				Name: image,
-			})
+			}, platformRequestOptions(platform)...)
 			if err != nil {
 				return fmt.Errorf("failed to pull image: %w", err)
 			}
@@ -240,6 +248,7 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 		OverlaySize: hypeman.Opt(cmd.String("overlay-size")),
 		HotplugSize: hypeman.Opt(cmd.String("hotplug-size")),
 	}
+	instanceCreateOpts := platformRequestOptions(platform)
 
 	if len(env) > 0 {
 		params.Env = env
@@ -402,7 +411,7 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 	result, err := client.Instances.New(
 		ctx,
 		params,
-		opts...,
+		append(opts, instanceCreateOpts...)...,
 	)
 	if err != nil {
 		return err
@@ -437,9 +446,9 @@ func buildNetworkEgress(enabled bool, enabledSet bool, mode string) (hypeman.Ins
 }
 
 // isNotFoundError checks if err is a 404 not found error
-func isNotFoundError(err error, target **hypeman.Error) bool {
-	if apiErr, ok := err.(*hypeman.Error); ok {
-		*target = apiErr
+func isNotFoundError(err error) bool {
+	var apiErr *hypeman.Error
+	if errors.As(err, &apiErr) {
 		return apiErr.Response != nil && apiErr.Response.StatusCode == 404
 	}
 	return false
@@ -471,6 +480,12 @@ func waitForImageReady(ctx context.Context, client *hypeman.Client, img *hypeman
 		case <-ticker.C:
 			updated, err := client.Images.Get(ctx, url.PathEscape(img.Name))
 			if err != nil {
+				// A cold pull's record may briefly 404 before it is queryable.
+				// Treat that as "still pulling" and keep polling rather than
+				// surfacing a confusing not-found error for an in-flight pull.
+				if isNotFoundError(err) {
+					continue
+				}
 				return fmt.Errorf("failed to check image status: %w", err)
 			}
 
