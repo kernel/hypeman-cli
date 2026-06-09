@@ -208,7 +208,7 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 			fmt.Fprintf(os.Stderr, "Image not found locally. Pulling %s...\n", image)
 			imgInfo, err = client.Images.New(ctx, hypeman.ImageNewParams{
 				Name: image,
-			}, imageCreateOptionsForPlatform(platform)...)
+			}, platformRequestOptions(platform)...)
 			if err != nil {
 				return fmt.Errorf("failed to pull image: %w", err)
 			}
@@ -248,7 +248,7 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 		OverlaySize: hypeman.Opt(cmd.String("overlay-size")),
 		HotplugSize: hypeman.Opt(cmd.String("hotplug-size")),
 	}
-	instanceCreateOpts := instanceCreateOptionsForPlatform(platform)
+	instanceCreateOpts := platformRequestOptions(platform)
 
 	if len(env) > 0 {
 		params.Env = env
@@ -443,20 +443,6 @@ func buildNetworkEgress(enabled bool, enabledSet bool, mode string) (hypeman.Ins
 	}
 
 	return egress, nil
-}
-
-func imageCreateOptionsForPlatform(platform string) []option.RequestOption {
-	if platform == "" {
-		return nil
-	}
-	return []option.RequestOption{option.WithJSONSet("platform", platform)}
-}
-
-func instanceCreateOptionsForPlatform(platform string) []option.RequestOption {
-	if platform == "" {
-		return nil
-	}
-	return []option.RequestOption{option.WithJSONSet("platform", platform)}
 }
 
 // isNotFoundError checks if err is a 404 not found error

@@ -90,7 +90,6 @@ func handleImageList(ctx context.Context, cmd *cli.Command) error {
 	if cmd.Root().Bool("debug") {
 		opts = append(opts, debugMiddlewareOption)
 	}
-	opts = append(opts, imageCreateRequestOptions(cmd)...)
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
@@ -181,6 +180,7 @@ func handleImageCreateLike(ctx context.Context, cmd *cli.Command, usageLine, out
 	if cmd.Root().Bool("debug") {
 		opts = append(opts, debugMiddlewareOption)
 	}
+	opts = append(opts, platformRequestOptions(cmd.String("platform"))...)
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
@@ -228,11 +228,14 @@ func buildImageNewParams(name string, tagSpecs []string) (hypeman.ImageNewParams
 	return params, malformedTags
 }
 
-func imageCreateRequestOptions(cmd *cli.Command) []option.RequestOption {
-	if platform := cmd.String("platform"); platform != "" {
-		return []option.RequestOption{option.WithJSONSet("platform", platform)}
+// platformRequestOptions sets the Docker-style platform field on an image- or
+// instance-create request. SDK v0.20.0 has no typed platform field, so we set it
+// via WithJSONSet. TODO(sdk-bump): pass a typed field once the SDK exposes it.
+func platformRequestOptions(platform string) []option.RequestOption {
+	if platform == "" {
+		return nil
 	}
-	return nil
+	return []option.RequestOption{option.WithJSONSet("platform", platform)}
 }
 
 func handleImageGet(ctx context.Context, cmd *cli.Command) error {

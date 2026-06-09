@@ -38,7 +38,7 @@ func handlePull(ctx context.Context, cmd *cli.Command) error {
 	if cmd.Root().Bool("debug") {
 		opts = append(opts, debugMiddlewareOption)
 	}
-	opts = append(opts, imageCreateRequestOptions(cmd)...)
+	opts = append(opts, platformRequestOptions(cmd.String("platform"))...)
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
