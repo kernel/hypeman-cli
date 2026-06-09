@@ -69,6 +69,20 @@ var imageDeleteCmd = cli.Command{
 	HideHelpCommand: true,
 }
 
+// platformFromRaw reads the top-level "platform" field from a raw server payload,
+// defaulting to "-" when absent. SDK v0.20.0's Image/Instance models predate the
+// platform field, so it is only reachable via the raw JSON.
+//
+// TODO(sdk-bump): drop this once the SDK exposes a typed platform field and read
+// it directly alongside the other columns.
+func platformFromRaw(raw string) string {
+	platform := gjson.Get(raw, "platform").String()
+	if platform == "" {
+		return "-"
+	}
+	return platform
+}
+
 func handleImageList(ctx context.Context, cmd *cli.Command) error {
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 
@@ -119,8 +133,8 @@ func handleImageList(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
-	table := NewTableWriter(os.Stdout, "NAME", "STATUS", "DIGEST", "SIZE", "CREATED")
-	table.TruncOrder = []int{0, 2, 4} // NAME first, then DIGEST, CREATED
+	table := NewTableWriter(os.Stdout, "NAME", "PLATFORM", "STATUS", "DIGEST", "SIZE", "CREATED")
+	table.TruncOrder = []int{0, 3, 5} // NAME first, then DIGEST, CREATED
 	for _, img := range *images {
 		digest := img.Digest
 		if len(digest) > 19 {
@@ -134,6 +148,7 @@ func handleImageList(ctx context.Context, cmd *cli.Command) error {
 
 		table.AddRow(
 			img.Name,
+			platformFromRaw(img.RawJSON()),
 			string(img.Status),
 			digest,
 			size,
