@@ -350,7 +350,7 @@ func handleSnapshotList(ctx context.Context, cmd *cli.Command) error {
 			name = "-"
 		}
 		table.AddRow(
-			TruncateID(snapshot.ID),
+			snapshot.ID,
 			name,
 			string(snapshot.Kind),
 			snapshot.SourceInstanceName,
