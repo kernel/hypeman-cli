@@ -69,6 +69,20 @@ var imageDeleteCmd = cli.Command{
 	HideHelpCommand: true,
 }
 
+// platformFromRaw reads the top-level "platform" field from a raw server payload,
+// defaulting to "-" when absent. SDK v0.20.0's Image/Instance models predate the
+// platform field, so it is only reachable via the raw JSON.
+//
+// TODO(sdk-bump): drop this once the SDK exposes a typed platform field and read
+// it directly alongside the other columns.
+func platformFromRaw(raw string) string {
+	platform := gjson.Get(raw, "platform").String()
+	if platform == "" {
+		return "-"
+	}
+	return platform
+}
+
 func handleImageList(ctx context.Context, cmd *cli.Command) error {
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 
@@ -118,8 +132,8 @@ func handleImageList(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
-	table := NewTableWriter(os.Stdout, "NAME", "STATUS", "DIGEST", "SIZE", "CREATED")
-	table.TruncOrder = []int{0, 2, 4} // NAME first, then DIGEST, CREATED
+	table := NewTableWriter(os.Stdout, "NAME", "PLATFORM", "STATUS", "DIGEST", "SIZE", "CREATED")
+	table.TruncOrder = []int{0, 3, 5} // NAME first, then DIGEST, CREATED
 	for _, img := range *images {
 		digest := img.Digest
 		if len(digest) > 19 {
@@ -133,6 +147,7 @@ func handleImageList(ctx context.Context, cmd *cli.Command) error {
 
 		table.AddRow(
 			img.Name,
+			platformFromRaw(img.RawJSON()),
 			string(img.Status),
 			digest,
 			size,
@@ -165,6 +180,7 @@ func handleImageCreateLike(ctx context.Context, cmd *cli.Command, usageLine, out
 	if cmd.Root().Bool("debug") {
 		opts = append(opts, debugMiddlewareOption)
 	}
+	opts = append(opts, platformRequestOptions(cmd.String("platform"))...)
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
@@ -194,6 +210,10 @@ func imageCreateFlags() []cli.Flag {
 			Name:  "tag",
 			Usage: "Set image tag key-value pair (KEY=VALUE, can be repeated)",
 		},
+		&cli.StringFlag{
+			Name:  "platform",
+			Usage: `Target platform as os/arch[/variant] (e.g., "linux/amd64")`,
+		},
 	}
 }
 
@@ -206,6 +226,16 @@ func buildImageNewParams(name string, tagSpecs []string) (hypeman.ImageNewParams
 	}
 
 	return params, malformedTags
+}
+
+// platformRequestOptions sets the Docker-style platform field on an image- or
+// instance-create request. SDK v0.20.0 has no typed platform field, so we set it
+// via WithJSONSet. TODO(sdk-bump): pass a typed field once the SDK exposes it.
+func platformRequestOptions(platform string) []option.RequestOption {
+	if platform == "" {
+		return nil
+	}
+	return []option.RequestOption{option.WithJSONSet("platform", platform)}
 }
 
 func handleImageGet(ctx context.Context, cmd *cli.Command) error {

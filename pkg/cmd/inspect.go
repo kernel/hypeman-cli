@@ -2,13 +2,14 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"github.com/urfave/cli/v3"
 )
 
@@ -49,31 +50,56 @@ func handleInspect(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	if !cmd.Bool("show-env") {
-		instance.Env = redactEnvValues(instance.Env)
+	// Render from the raw server response rather than the typed struct: SDK
+	// v0.20.0's Instance model predates fields like `platform`, so marshaling the
+	// struct would silently drop them. RawJSON carries the full server payload.
+	raw := instance.RawJSON()
+	if raw == "" {
+		return fmt.Errorf("instance response did not include a raw payload")
 	}
 
-	raw, err := json.Marshal(instance)
-	if err != nil {
-		return fmt.Errorf("failed to encode instance response: %w", err)
+	if !cmd.Bool("show-env") {
+		raw = redactEnvValues(raw)
 	}
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
 
-	obj := gjson.ParseBytes(raw)
+	obj := gjson.Parse(raw)
 	return ShowJSON(os.Stdout, "instance inspect", obj, format, transform)
 }
 
-func redactEnvValues(env map[string]string) map[string]string {
-	if len(env) == 0 {
-		return env
+// redactEnvValues replaces every value under the top-level "env" object with
+// "[hidden]" in the raw JSON, preserving the keys. On any sjson error it falls
+// back to the original payload so inspect never fails on redaction alone.
+func redactEnvValues(raw string) string {
+	env := gjson.Get(raw, "env")
+	if !env.Exists() || !env.IsObject() {
+		return raw
 	}
-
-	redacted := make(map[string]string, len(env))
-	for key := range env {
-		redacted[key] = "[hidden]"
+	out := raw
+	var setErr error
+	env.ForEach(func(key, _ gjson.Result) bool {
+		updated, err := sjson.Set(out, "env."+escapeSJSONKey(key.String()), "[hidden]")
+		if err != nil {
+			setErr = err
+			return false
+		}
+		out = updated
+		return true
+	})
+	if setErr != nil {
+		return raw
 	}
+	return out
+}
 
-	return redacted
+// escapeSJSONKey escapes characters sjson treats specially in a path (the '.'
+// separator plus the '*', '?', '|', '#', and '@' wildcards/modifiers) so env var
+// names containing them address the intended key.
+func escapeSJSONKey(key string) string {
+	for _, special := range []string{".", "*", "?", "|", "#", "@"} {
+		key = strings.ReplaceAll(key, special, "\\"+special)
+	}
+	return key
 }

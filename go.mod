@@ -16,6 +16,7 @@ require (
 	github.com/knadh/koanf/providers/env v1.1.0
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/v2 v2.3.2
+	github.com/moby/patternmatcher v0.6.1
 	github.com/muesli/reflow v0.3.0
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0
@@ -25,6 +26,7 @@ require (
 	github.com/urfave/cli/v3 v3.3.2
 	golang.org/x/sys v0.38.0
 	golang.org/x/term v0.37.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -86,5 +88,4 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20250825161204-c5933d9347a5 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250825161204-c5933d9347a5 // indirect
 	google.golang.org/grpc v1.75.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
