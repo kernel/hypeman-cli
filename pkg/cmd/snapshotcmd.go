@@ -343,7 +343,7 @@ func handleSnapshotList(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	table := NewTableWriter(os.Stdout, "ID", "NAME", "KIND", "SOURCE", "CREATED")
-	table.TruncOrder = []int{0, 3}
+	table.TruncOrder = []int{1, 3} // NAME first, then SOURCE; never truncate ID (copy-paste target)
 	for _, snapshot := range *snapshots {
 		name := snapshot.Name
 		if name == "" {
