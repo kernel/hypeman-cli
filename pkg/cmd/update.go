@@ -149,7 +149,10 @@ func handleUpdateHealthCheck(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("instance ID or name required\nUsage: hypeman update health-check <instance> [flags]")
 	}
 
-	input, set := parseHealthCheckInput(cmd, "")
+	input, set, err := parseHealthCheckInput(cmd, "")
+	if err != nil {
+		return err
+	}
 	if !set {
 		return fmt.Errorf("at least one health-check flag is required")
 	}

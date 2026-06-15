@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/kernel/hypeman-cli/lib/compose"
 	"github.com/urfave/cli/v3"
 )
@@ -83,7 +85,7 @@ func restartPolicyFlags(prefix string) []cli.Flag {
 	}
 }
 
-func parseHealthCheckInput(cmd *cli.Command, prefix string) (compose.HealthCheckInput, bool) {
+func parseHealthCheckInput(cmd *cli.Command, prefix string) (compose.HealthCheckInput, bool, error) {
 	typeFlag := prefix + "type"
 	intervalFlag := prefix + "interval"
 	timeoutFlag := prefix + "timeout"
@@ -98,17 +100,25 @@ func parseHealthCheckInput(cmd *cli.Command, prefix string) (compose.HealthCheck
 	execFlag := prefix + "exec"
 	execWorkingDirFlag := prefix + "exec-working-dir"
 
+	// A probe sub-block is engaged by its required-field flag (http-port, tcp-port,
+	// exec command); those fields are api:"required", so a secondary flag alone
+	// (--http-path/-scheme/-expected-status or --exec-working-dir) would build a probe
+	// with a zero/empty required value. Reject that explicitly.
 	httpSet := cmd.IsSet(httpPortFlag) || cmd.IsSet(httpPathFlag) || cmd.IsSet(httpSchemeFlag) || cmd.IsSet(httpExpectedStatusFlag)
+	if httpSet && !cmd.IsSet(httpPortFlag) {
+		return compose.HealthCheckInput{}, false, fmt.Errorf("--%shttp-port is required when configuring an HTTP health check", prefix)
+	}
+	if cmd.IsSet(execWorkingDirFlag) && !cmd.IsSet(execFlag) {
+		return compose.HealthCheckInput{}, false, fmt.Errorf("--%sexec is required when setting --%sexec-working-dir", prefix, prefix)
+	}
 	tcpSet := cmd.IsSet(tcpPortFlag)
-	// Gate the exec block on --exec only: HealthCheckExecParam.Command is required,
-	// so building it from a lone --exec-working-dir would send an empty command.
 	execSet := cmd.IsSet(execFlag)
 
 	set := cmd.IsSet(typeFlag) || cmd.IsSet(intervalFlag) || cmd.IsSet(timeoutFlag) ||
 		cmd.IsSet(startPeriodFlag) || cmd.IsSet(failureThresholdFlag) || cmd.IsSet(successThresholdFlag) ||
 		httpSet || tcpSet || execSet
 	if !set {
-		return compose.HealthCheckInput{}, false
+		return compose.HealthCheckInput{}, false, nil
 	}
 
 	in := compose.HealthCheckInput{
@@ -136,7 +146,7 @@ func parseHealthCheckInput(cmd *cli.Command, prefix string) (compose.HealthCheck
 			WorkingDir: cmd.String(execWorkingDirFlag),
 		}
 	}
-	return in, true
+	return in, true, nil
 }
 
 func parseRestartPolicyInput(cmd *cli.Command, prefix string) (compose.RestartPolicyInput, bool) {
@@ -150,10 +160,16 @@ func parseRestartPolicyInput(cmd *cli.Command, prefix string) (compose.RestartPo
 		return compose.RestartPolicyInput{}, false
 	}
 
-	return compose.RestartPolicyInput{
+	in := compose.RestartPolicyInput{
 		Policy:      cmd.String(policyFlag),
 		Backoff:     cmd.String(backoffFlag),
-		MaxAttempts: int64(cmd.Int(maxAttemptsFlag)),
 		StableAfter: cmd.String(stableAfterFlag),
-	}, true
+	}
+	// Send max_attempts only when explicitly provided, so a PATCH with --max-attempts 0
+	// clears the limit to unlimited rather than being omitted (a no-op) by omitzero.
+	if cmd.IsSet(maxAttemptsFlag) {
+		v := int64(cmd.Int(maxAttemptsFlag))
+		in.MaxAttempts = &v
+	}
+	return in, true
 }

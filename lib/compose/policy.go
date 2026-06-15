@@ -38,10 +38,12 @@ type HealthCheckExecInput struct {
 }
 
 // RestartPolicyInput is a neutral, plain-value description of a restart policy.
+// MaxAttempts is a pointer so an explicit 0 (unlimited) is distinguishable from
+// "not provided": nil omits the field, &0 sends an explicit 0.
 type RestartPolicyInput struct {
 	Policy      string
 	Backoff     string
-	MaxAttempts int64
+	MaxAttempts *int64
 	StableAfter string
 }
 
@@ -104,8 +106,8 @@ func BuildRestartPolicyParam(in RestartPolicyInput) hypeman.RestartPolicyParam {
 	if in.Backoff != "" {
 		policy.Backoff = hypeman.String(in.Backoff)
 	}
-	if in.MaxAttempts > 0 {
-		policy.MaxAttempts = hypeman.Int(in.MaxAttempts)
+	if in.MaxAttempts != nil {
+		policy.MaxAttempts = hypeman.Int(*in.MaxAttempts)
 	}
 	if in.StableAfter != "" {
 		policy.StableAfter = hypeman.String(in.StableAfter)

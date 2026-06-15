@@ -154,12 +154,16 @@ func updateDesiredInstanceImage(instances []desiredInstance, composeName, servic
 }
 
 func buildComposeRestartPolicy(restart *composeRestartSpec) hypeman.RestartPolicyParam {
-	return BuildRestartPolicyParam(RestartPolicyInput{
+	in := RestartPolicyInput{
 		Policy:      restart.Policy,
 		Backoff:     restart.Backoff,
-		MaxAttempts: int64(restart.MaxAttempts),
 		StableAfter: restart.StableAfter,
-	})
+	}
+	if restart.MaxAttempts > 0 {
+		v := int64(restart.MaxAttempts)
+		in.MaxAttempts = &v
+	}
+	return BuildRestartPolicyParam(in)
 }
 
 func buildComposeHealthCheck(check *composeCheckSpec) hypeman.HealthCheckParam {

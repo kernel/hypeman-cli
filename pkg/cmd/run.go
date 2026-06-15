@@ -273,7 +273,11 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 	if autoStandbySet {
 		params.AutoStandby = autoStandbyPolicy
 	}
-	if healthInput, ok := parseHealthCheckInput(cmd, "health-"); ok {
+	healthInput, healthOk, err := parseHealthCheckInput(cmd, "health-")
+	if err != nil {
+		return err
+	}
+	if healthOk {
 		params.HealthCheck = compose.BuildHealthCheckParam(healthInput)
 	}
 	if restartInput, ok := parseRestartPolicyInput(cmd, "restart-"); ok {
