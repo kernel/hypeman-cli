@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/kernel/hypeman-cli/lib/compose"
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
 	"github.com/tidwall/gjson"
@@ -18,10 +19,14 @@ var updateCmd = cli.Command{
 
 Currently supported:
   hypeman update auto-standby <instance> --enabled --idle-timeout 10m
-  hypeman update egress-credentials <instance> --env KEY=VALUE`,
+  hypeman update egress-credentials <instance> --env KEY=VALUE
+  hypeman update health-check <instance> --type http --http-port 8080
+  hypeman update restart-policy <instance> --policy on_failure --max-attempts 5`,
 	Commands: []*cli.Command{
 		&updateAutoStandbyCmd,
 		&updateEgressCredentialsCmd,
+		&updateHealthCheckCmd,
+		&updateRestartPolicyCmd,
 	},
 	HideHelpCommand: true,
 }
@@ -64,6 +69,24 @@ var updateEgressCredentialsCmd = cli.Command{
 		},
 	},
 	Action:          handleUpdate,
+	HideHelpCommand: true,
+}
+
+var updateHealthCheckCmd = cli.Command{
+	Name:            "health-check",
+	Usage:           "Update the workload health check policy for an instance",
+	ArgsUsage:       "<instance>",
+	Flags:           healthCheckFlags(""),
+	Action:          handleUpdateHealthCheck,
+	HideHelpCommand: true,
+}
+
+var updateRestartPolicyCmd = cli.Command{
+	Name:            "restart-policy",
+	Usage:           "Update the restart supervision policy for an instance",
+	ArgsUsage:       "<instance>",
+	Flags:           restartPolicyFlags(""),
+	Action:          handleUpdateRestartPolicy,
 	HideHelpCommand: true,
 }
 
@@ -111,6 +134,106 @@ func handleUpdateAutoStandby(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "Updating auto-standby for %s...\n", args[0])
+
+	instance, err := client.Instances.Update(ctx, instanceID, params, opts...)
+	if err != nil {
+		return err
+	}
+	fmt.Println(instance.ID)
+	return nil
+}
+
+func handleUpdateHealthCheck(ctx context.Context, cmd *cli.Command) error {
+	args := cmd.Args().Slice()
+	if len(args) < 1 {
+		return fmt.Errorf("instance ID or name required\nUsage: hypeman update health-check <instance> [flags]")
+	}
+
+	input, set := parseHealthCheckInput(cmd, "")
+	if !set {
+		return fmt.Errorf("at least one health-check flag is required")
+	}
+
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	instanceID, err := ResolveInstance(ctx, &client, args[0])
+	if err != nil {
+		return err
+	}
+
+	params := hypeman.InstanceUpdateParams{
+		HealthCheck: compose.BuildHealthCheckParam(input),
+	}
+
+	var opts []option.RequestOption
+	if cmd.Root().Bool("debug") {
+		opts = append(opts, debugMiddlewareOption)
+	}
+
+	format := cmd.Root().String("format")
+	transform := cmd.Root().String("transform")
+
+	if format != "auto" {
+		var res []byte
+		opts = append(opts, option.WithResponseBodyInto(&res))
+		_, err := client.Instances.Update(ctx, instanceID, params, opts...)
+		if err != nil {
+			return err
+		}
+		obj := gjson.ParseBytes(res)
+		return ShowJSON(os.Stdout, "update health-check", obj, format, transform)
+	}
+
+	fmt.Fprintf(os.Stderr, "Updating health-check for %s...\n", args[0])
+
+	instance, err := client.Instances.Update(ctx, instanceID, params, opts...)
+	if err != nil {
+		return err
+	}
+	fmt.Println(instance.ID)
+	return nil
+}
+
+func handleUpdateRestartPolicy(ctx context.Context, cmd *cli.Command) error {
+	args := cmd.Args().Slice()
+	if len(args) < 1 {
+		return fmt.Errorf("instance ID or name required\nUsage: hypeman update restart-policy <instance> [flags]")
+	}
+
+	input, set := parseRestartPolicyInput(cmd, "")
+	if !set {
+		return fmt.Errorf("at least one restart-policy flag is required")
+	}
+
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	instanceID, err := ResolveInstance(ctx, &client, args[0])
+	if err != nil {
+		return err
+	}
+
+	params := hypeman.InstanceUpdateParams{
+		RestartPolicy: compose.BuildRestartPolicyParam(input),
+	}
+
+	var opts []option.RequestOption
+	if cmd.Root().Bool("debug") {
+		opts = append(opts, debugMiddlewareOption)
+	}
+
+	format := cmd.Root().String("format")
+	transform := cmd.Root().String("transform")
+
+	if format != "auto" {
+		var res []byte
+		opts = append(opts, option.WithResponseBodyInto(&res))
+		_, err := client.Instances.Update(ctx, instanceID, params, opts...)
+		if err != nil {
+			return err
+		}
+		obj := gjson.ParseBytes(res)
+		return ShowJSON(os.Stdout, "update restart-policy", obj, format, transform)
+	}
+
+	fmt.Fprintf(os.Stderr, "Updating restart-policy for %s...\n", args[0])
 
 	instance, err := client.Instances.Update(ctx, instanceID, params, opts...)
 	if err != nil {

@@ -3,10 +3,12 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
+	"github.com/kernel/hypeman-go/packages/param"
 	"github.com/tidwall/gjson"
 	"github.com/urfave/cli/v3"
 )
@@ -47,6 +49,10 @@ var volumeCreateCmd = cli.Command{
 		&cli.StringSliceFlag{
 			Name:  "tag",
 			Usage: "Set volume tag key-value pair (KEY=VALUE, can be repeated)",
+		},
+		&cli.StringFlag{
+			Name:  "from-archive",
+			Usage: "Pre-populate the volume from a tar.gz archive (path, or - for stdin)",
 		},
 	},
 	Action:          handleVolumeCreate,
@@ -132,20 +138,19 @@ var volumeDetachCmd = cli.Command{
 func handleVolumeCreate(ctx context.Context, cmd *cli.Command) error {
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 
-	params := hypeman.VolumeNewParams{
-		Name:   cmd.String("name"),
-		SizeGB: int64(cmd.Int("size")),
-	}
+	name := cmd.String("name")
+	sizeGB := int64(cmd.Int("size"))
 
-	if id := cmd.String("id"); id != "" {
-		params.ID = hypeman.Opt(id)
+	var id param.Opt[string]
+	if v := cmd.String("id"); v != "" {
+		id = hypeman.Opt(v)
 	}
 	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
 	for _, malformed := range malformedTags {
 		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
 	}
-	if len(tags) > 0 {
-		params.Tags = tags
+	if len(tags) == 0 {
+		tags = nil
 	}
 
 	var opts []option.RequestOption
@@ -155,9 +160,36 @@ func handleVolumeCreate(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	opts = append(opts, option.WithResponseBodyInto(&res))
-	_, err := client.Volumes.New(ctx, params, opts...)
-	if err != nil {
-		return err
+
+	if archive := cmd.String("from-archive"); archive != "" {
+		body := io.Reader(os.Stdin)
+		if archive != "-" {
+			file, err := os.Open(archive)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+			body = file
+		}
+		params := hypeman.VolumeNewFromArchiveParams{
+			Name:   name,
+			SizeGB: sizeGB,
+			ID:     id,
+			Tags:   tags,
+		}
+		if _, err := client.Volumes.NewFromArchive(ctx, body, params, opts...); err != nil {
+			return err
+		}
+	} else {
+		params := hypeman.VolumeNewParams{
+			Name:   name,
+			SizeGB: sizeGB,
+			ID:     id,
+			Tags:   tags,
+		}
+		if _, err := client.Volumes.New(ctx, params, opts...); err != nil {
+			return err
+		}
 	}
 
 	format := cmd.Root().String("format")

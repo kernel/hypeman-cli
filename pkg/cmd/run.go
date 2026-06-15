@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kernel/hypeman-cli/lib/compose"
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
 	"github.com/kernel/hypeman-go/shared"
@@ -188,6 +189,11 @@ Examples:
 	HideHelpCommand: true,
 }
 
+func init() {
+	runCmd.Flags = append(runCmd.Flags, healthCheckFlags("health-")...)
+	runCmd.Flags = append(runCmd.Flags, restartPolicyFlags("restart-")...)
+}
+
 func handleRun(ctx context.Context, cmd *cli.Command) error {
 	args := cmd.Args().Slice()
 	if len(args) < 1 {
@@ -266,6 +272,12 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 	}
 	if autoStandbySet {
 		params.AutoStandby = autoStandbyPolicy
+	}
+	if healthInput, ok := parseHealthCheckInput(cmd, "health-"); ok {
+		params.HealthCheck = compose.BuildHealthCheckParam(healthInput)
+	}
+	if restartInput, ok := parseRestartPolicyInput(cmd, "restart-"); ok {
+		params.RestartPolicy = compose.BuildRestartPolicyParam(restartInput)
 	}
 
 	// Network configuration

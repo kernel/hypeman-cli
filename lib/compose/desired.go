@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/kernel/hypeman-go"
 )
@@ -155,78 +154,41 @@ func updateDesiredInstanceImage(instances []desiredInstance, composeName, servic
 }
 
 func buildComposeRestartPolicy(restart *composeRestartSpec) hypeman.RestartPolicyParam {
-	policy := hypeman.RestartPolicyParam{}
-	if restart.Policy != "" {
-		policy.Policy = hypeman.RestartPolicyPolicy(strings.ReplaceAll(restart.Policy, "-", "_"))
-	}
-	if restart.Backoff != "" {
-		policy.Backoff = hypeman.String(restart.Backoff)
-	}
-	if restart.MaxAttempts > 0 {
-		policy.MaxAttempts = hypeman.Int(int64(restart.MaxAttempts))
-	}
-	if restart.StableAfter != "" {
-		policy.StableAfter = hypeman.String(restart.StableAfter)
-	}
-	return policy
+	return BuildRestartPolicyParam(RestartPolicyInput{
+		Policy:      restart.Policy,
+		Backoff:     restart.Backoff,
+		MaxAttempts: int64(restart.MaxAttempts),
+		StableAfter: restart.StableAfter,
+	})
 }
 
 func buildComposeHealthCheck(check *composeCheckSpec) hypeman.HealthCheckParam {
-	health := hypeman.HealthCheckParam{}
-	if check.Type != "" {
-		health.Type = hypeman.HealthCheckType(strings.ToLower(check.Type))
+	in := HealthCheckInput{
+		Type:             check.Type,
+		Interval:         check.Interval,
+		Timeout:          check.Timeout,
+		StartPeriod:      check.StartPeriod,
+		FailureThreshold: int64(check.FailureThreshold),
+		SuccessThreshold: int64(check.SuccessThreshold),
 	}
 	if check.HTTP != nil {
-		health.Type = defaultHealthCheckType(health.Type, hypeman.HealthCheckTypeHTTP)
-		health.HTTP = hypeman.HealthCheckHTTPParam{
-			Port: int64(check.HTTP.Port),
-		}
-		if check.HTTP.Path != "" {
-			health.HTTP.Path = hypeman.String(check.HTTP.Path)
-		}
-		if check.HTTP.Scheme != "" {
-			health.HTTP.Scheme = hypeman.HealthCheckHTTPScheme(strings.ToLower(check.HTTP.Scheme))
-		}
-		if check.HTTP.ExpectedStatus > 0 {
-			health.HTTP.ExpectedStatus = hypeman.Int(int64(check.HTTP.ExpectedStatus))
+		in.HTTP = &HealthCheckHTTPInput{
+			Port:           int64(check.HTTP.Port),
+			Path:           check.HTTP.Path,
+			Scheme:         check.HTTP.Scheme,
+			ExpectedStatus: int64(check.HTTP.ExpectedStatus),
 		}
 	}
 	if check.TCP != nil {
-		health.Type = defaultHealthCheckType(health.Type, hypeman.HealthCheckTypeTcp)
-		health.Tcp = hypeman.HealthCheckTcpParam{Port: int64(check.TCP.Port)}
+		in.TCP = &HealthCheckTCPInput{Port: int64(check.TCP.Port)}
 	}
 	if check.Exec != nil {
-		health.Type = defaultHealthCheckType(health.Type, hypeman.HealthCheckTypeExec)
-		health.Exec = hypeman.HealthCheckExecParam{
-			Command: check.Exec.Command,
-		}
-		if check.Exec.WorkingDir != "" {
-			health.Exec.WorkingDir = hypeman.String(check.Exec.WorkingDir)
+		in.Exec = &HealthCheckExecInput{
+			Command:    check.Exec.Command,
+			WorkingDir: check.Exec.WorkingDir,
 		}
 	}
-	if check.Interval != "" {
-		health.Interval = hypeman.String(check.Interval)
-	}
-	if check.Timeout != "" {
-		health.Timeout = hypeman.String(check.Timeout)
-	}
-	if check.StartPeriod != "" {
-		health.StartPeriod = hypeman.String(check.StartPeriod)
-	}
-	if check.FailureThreshold > 0 {
-		health.FailureThreshold = hypeman.Int(int64(check.FailureThreshold))
-	}
-	if check.SuccessThreshold > 0 {
-		health.SuccessThreshold = hypeman.Int(int64(check.SuccessThreshold))
-	}
-	return health
-}
-
-func defaultHealthCheckType(current, fallback hypeman.HealthCheckType) hypeman.HealthCheckType {
-	if current != "" {
-		return current
-	}
-	return fallback
+	return BuildHealthCheckParam(in)
 }
 
 func buildComposeIngressInput(instanceName, ingressName string, spec composeIngressRuleSpec) hypeman.IngressNewParams {

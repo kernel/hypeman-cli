@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/kernel/hypeman-go"
@@ -31,16 +32,14 @@ var ingressCreateCmd = cli.Command{
 	ArgsUsage: "<instance>",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
-			Name:     "hostname",
-			Aliases:  []string{"H"},
-			Usage:    "Hostname to match (exact match on Host header)",
-			Required: true,
+			Name:    "hostname",
+			Aliases: []string{"H"},
+			Usage:   "Hostname to match (exact match on Host header)",
 		},
 		&cli.IntFlag{
-			Name:     "port",
-			Aliases:  []string{"p"},
-			Usage:    "Target port on the instance",
-			Required: true,
+			Name:    "port",
+			Aliases: []string{"p"},
+			Usage:   "Target port on the instance",
 		},
 		&cli.IntFlag{
 			Name:  "host-port",
@@ -54,6 +53,12 @@ var ingressCreateCmd = cli.Command{
 		&cli.BoolFlag{
 			Name:  "redirect-http",
 			Usage: "Auto-create HTTP to HTTPS redirect (only applies when --tls is enabled)",
+		},
+		&cli.StringSliceFlag{
+			Name: "rule",
+			Usage: "Add a routing rule (can be repeated): hostname[:host-port]=instance:port[,tls][,redirect-http]. " +
+				"Omit the instance to target the positional <instance>. When any --rule is given, the single-rule " +
+				"shorthand flags (--hostname/--port/--host-port/--tls/--redirect-http) must not be used.",
 		},
 		&cli.StringFlag{
 			Name:  "name",
@@ -109,16 +114,53 @@ func handleIngressCreate(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	instance := args[0]
-	hostname := cmd.String("hostname")
-	port := cmd.Int("port")
-	hostPort := cmd.Int("host-port")
-	tls := cmd.Bool("tls")
-	redirectHTTP := cmd.Bool("redirect-http")
 	name := cmd.String("name")
+
+	ruleSpecs := cmd.StringSlice("rule")
+	var rules []hypeman.IngressRuleParam
+	var primaryHostname string
+	if len(ruleSpecs) > 0 {
+		for _, flag := range []string{"hostname", "port", "host-port", "tls", "redirect-http"} {
+			if cmd.IsSet(flag) {
+				return fmt.Errorf("--rule cannot be combined with --%s; provide all rules via --rule", flag)
+			}
+		}
+		for _, spec := range ruleSpecs {
+			rule, err := parseIngressRuleSpec(spec, instance)
+			if err != nil {
+				return fmt.Errorf("invalid rule %q: %w", spec, err)
+			}
+			rules = append(rules, rule)
+		}
+		primaryHostname = rules[0].Match.Hostname
+	} else {
+		hostname := cmd.String("hostname")
+		if hostname == "" {
+			return fmt.Errorf("--hostname is required (or use --rule)")
+		}
+		if !cmd.IsSet("port") {
+			return fmt.Errorf("--port is required (or use --rule)")
+		}
+		rules = []hypeman.IngressRuleParam{
+			{
+				Match: hypeman.IngressMatchParam{
+					Hostname: hostname,
+					Port:     hypeman.Int(int64(cmd.Int("host-port"))),
+				},
+				Target: hypeman.IngressTargetParam{
+					Instance: instance,
+					Port:     int64(cmd.Int("port")),
+				},
+				Tls:          hypeman.Bool(cmd.Bool("tls")),
+				RedirectHTTP: hypeman.Bool(cmd.Bool("redirect-http")),
+			},
+		}
+		primaryHostname = hostname
+	}
 
 	// Auto-generate name from hostname if not provided
 	if name == "" {
-		name = generateIngressName(hostname)
+		name = generateIngressName(primaryHostname)
 	}
 
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
@@ -129,21 +171,8 @@ func handleIngressCreate(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	params := hypeman.IngressNewParams{
-		Name: name,
-		Rules: []hypeman.IngressRuleParam{
-			{
-				Match: hypeman.IngressMatchParam{
-					Hostname: hostname,
-					Port:     hypeman.Int(int64(hostPort)),
-				},
-				Target: hypeman.IngressTargetParam{
-					Instance: instance,
-					Port:     int64(port),
-				},
-				Tls:          hypeman.Bool(tls),
-				RedirectHTTP: hypeman.Bool(redirectHTTP),
-			},
-		},
+		Name:  name,
+		Rules: rules,
 	}
 	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
 	for _, malformed := range malformedTags {
@@ -297,6 +326,69 @@ func handleIngressDelete(ctx context.Context, cmd *cli.Command) error {
 
 	fmt.Fprintf(os.Stderr, "Deleted ingress %s\n", id)
 	return nil
+}
+
+// parseIngressRuleSpec parses a routing rule specification string.
+// Format: hostname[:host-port]=instance:port[,tls][,redirect-http]
+// When the instance is omitted (e.g. "host:80=:8080"), fallbackInstance is used.
+func parseIngressRuleSpec(spec, fallbackInstance string) (hypeman.IngressRuleParam, error) {
+	matchPart, targetPart, ok := strings.Cut(spec, "=")
+	if !ok {
+		return hypeman.IngressRuleParam{}, fmt.Errorf("expected format hostname[:host-port]=instance:port[,tls][,redirect-http]")
+	}
+
+	hostname, hostPortStr, hasHostPort := strings.Cut(matchPart, ":")
+	if hostname == "" {
+		return hypeman.IngressRuleParam{}, fmt.Errorf("hostname cannot be empty")
+	}
+	hostPort := int64(80)
+	if hasHostPort {
+		parsed, err := strconv.ParseInt(hostPortStr, 10, 64)
+		if err != nil {
+			return hypeman.IngressRuleParam{}, fmt.Errorf("invalid host port %q: %w", hostPortStr, err)
+		}
+		hostPort = parsed
+	}
+
+	targetSegments := strings.Split(targetPart, ",")
+	targetSpec := targetSegments[0]
+	targetInstance, portStr, ok := strings.Cut(targetSpec, ":")
+	if !ok {
+		return hypeman.IngressRuleParam{}, fmt.Errorf("target must be instance:port")
+	}
+	if targetInstance == "" {
+		targetInstance = fallbackInstance
+	}
+	port, err := strconv.ParseInt(portStr, 10, 64)
+	if err != nil {
+		return hypeman.IngressRuleParam{}, fmt.Errorf("invalid target port %q: %w", portStr, err)
+	}
+
+	rule := hypeman.IngressRuleParam{
+		Match: hypeman.IngressMatchParam{
+			Hostname: hostname,
+			Port:     hypeman.Int(hostPort),
+		},
+		Target: hypeman.IngressTargetParam{
+			Instance: targetInstance,
+			Port:     port,
+		},
+	}
+
+	for _, opt := range targetSegments[1:] {
+		switch opt {
+		case "tls":
+			rule.Tls = hypeman.Bool(true)
+		case "redirect-http":
+			rule.RedirectHTTP = hypeman.Bool(true)
+		case "":
+			continue
+		default:
+			return hypeman.IngressRuleParam{}, fmt.Errorf("unknown option %q", opt)
+		}
+	}
+
+	return rule, nil
 }
 
 // generateIngressName generates an ingress name from hostname
