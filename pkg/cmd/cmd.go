@@ -92,6 +92,7 @@ func init() {
 			&snapshotCmd,
 			&volumeCmd,
 			&resourcesCmd,
+			&healthCmd,
 			&deviceCmd,
 			&composeCmd,
 			{
