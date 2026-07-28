@@ -60,7 +60,7 @@ Examples:
 		},
 		&cli.StringFlag{
 			Name:  "platform",
-			Usage: `Target platform as os/arch[/variant] (e.g., "linux/amd64")`,
+			Usage: `Target platform as os/arch[/variant] (e.g., "linux/amd64"). Defaults to the host platform`,
 		},
 		&cli.StringFlag{
 			Name:  "memory",
@@ -212,9 +212,11 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 		// Image not found, try to pull it
 		if isNotFoundError(err) {
 			fmt.Fprintf(os.Stderr, "Image not found locally. Pulling %s...\n", image)
-			imgInfo, err = client.Images.New(ctx, hypeman.ImageNewParams{
-				Name: image,
-			}, platformRequestOptions(platform)...)
+			imagePullParams := hypeman.ImageNewParams{Name: image}
+			if platform != "" {
+				imagePullParams.Platform = hypeman.Opt(platform)
+			}
+			imgInfo, err = client.Images.New(ctx, imagePullParams)
 			if err != nil {
 				return fmt.Errorf("failed to pull image: %w", err)
 			}
@@ -254,7 +256,9 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 		OverlaySize: hypeman.Opt(cmd.String("overlay-size")),
 		HotplugSize: hypeman.Opt(cmd.String("hotplug-size")),
 	}
-	instanceCreateOpts := platformRequestOptions(platform)
+	if platform != "" {
+		params.Platform = hypeman.Opt(platform)
+	}
 
 	if len(env) > 0 {
 		params.Env = env
@@ -427,7 +431,7 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 	result, err := client.Instances.New(
 		ctx,
 		params,
-		append(opts, instanceCreateOpts...)...,
+		opts...,
 	)
 	if err != nil {
 		return err

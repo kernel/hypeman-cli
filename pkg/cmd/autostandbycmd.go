@@ -19,6 +19,7 @@ var autoStandbyCmd = cli.Command{
 	Usage:   "Inspect auto-standby configuration and status",
 	Commands: []*cli.Command{
 		&autoStandbyStatusCmd,
+		&autoStandbyHoldCmd,
 	},
 	HideHelpCommand: true,
 }
@@ -31,10 +32,52 @@ var autoStandbyStatusCmd = cli.Command{
 	HideHelpCommand: true,
 }
 
+var autoStandbyHoldCmd = cli.Command{
+	Name:      "hold",
+	Usage:     "Hold off auto-standby for an instance",
+	ArgsUsage: "<instance>",
+	Description: `Place a hold that prevents the auto-standby controller from putting the instance
+into standby before the returned HOLD UNTIL time, and cancel any queued standby attempt.
+
+Use this before opening a connection to a candidate-idle instance: success means it
+is safe to connect until HOLD UNTIL, while a conflict error means the instance is in
+standby (or irrevocably entering it) and must be restored first.
+
+Instances where auto-standby is disabled, unconfigured, or unsupported succeed and
+report their current status, because no auto-standby will occur.
+
+Examples:
+  hypeman auto-standby hold my-instance
+  hypeman auto-standby hold my-instance --format json`,
+	Action:          handleAutoStandbyHold,
+	HideHelpCommand: true,
+}
+
 func handleAutoStandbyStatus(ctx context.Context, cmd *cli.Command) error {
+	return runAutoStandbyAction(ctx, cmd, "status", func(ctx context.Context, client *hypeman.Client, instanceID string, opts []option.RequestOption) error {
+		_, err := client.Instances.AutoStandby.Status(ctx, instanceID, opts...)
+		return err
+	})
+}
+
+func handleAutoStandbyHold(ctx context.Context, cmd *cli.Command) error {
+	return runAutoStandbyAction(ctx, cmd, "hold", func(ctx context.Context, client *hypeman.Client, instanceID string, opts []option.RequestOption) error {
+		_, err := client.Instances.AutoStandby.Hold(ctx, instanceID, opts...)
+		return err
+	})
+}
+
+// runAutoStandbyAction resolves the instance argument, invokes an auto-standby
+// endpoint that returns an AutoStandbyStatus, and renders the response.
+func runAutoStandbyAction(
+	ctx context.Context,
+	cmd *cli.Command,
+	subcommand string,
+	call func(ctx context.Context, client *hypeman.Client, instanceID string, opts []option.RequestOption) error,
+) error {
 	args := cmd.Args().Slice()
 	if len(args) < 1 {
-		return fmt.Errorf("instance ID or name required\nUsage: hypeman auto-standby status <instance>")
+		return fmt.Errorf("instance ID or name required\nUsage: hypeman auto-standby %s <instance>", subcommand)
 	}
 
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
@@ -50,8 +93,7 @@ func handleAutoStandbyStatus(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	opts = append(opts, option.WithResponseBodyInto(&res))
-	_, err = client.Instances.AutoStandby.Status(ctx, instanceID, opts...)
-	if err != nil {
+	if err := call(ctx, &client, instanceID, opts); err != nil {
 		return err
 	}
 
@@ -92,10 +134,13 @@ func handleAutoStandbyStatus(ctx context.Context, cmd *cli.Command) error {
 		if nextStandby := obj.Get("next_standby_at").String(); nextStandby != "" {
 			fmt.Printf("%-14s %s\n", "NEXT STANDBY", nextStandby)
 		}
+		if holdUntil := obj.Get("hold_until").String(); holdUntil != "" {
+			fmt.Printf("%-14s %s\n", "HOLD UNTIL", holdUntil)
+		}
 		return nil
 	}
 
-	return ShowJSON(os.Stdout, "auto-standby status", obj, format, transform)
+	return ShowJSON(os.Stdout, "auto-standby "+subcommand, obj, format, transform)
 }
 
 func buildAutoStandbyPolicy(cmd *cli.Command, prefix string) (hypeman.AutoStandbyPolicyParam, bool, error) {

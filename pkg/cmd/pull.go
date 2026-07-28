@@ -27,7 +27,7 @@ func handlePull(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	image := args[0]
-	params, malformedTags := buildImageNewParams(image, cmd.StringSlice("tag"))
+	params, malformedTags := buildImageNewParams(image, cmd.StringSlice("tag"), cmd.String("platform"))
 	for _, malformed := range malformedTags {
 		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
 	}
@@ -38,7 +38,6 @@ func handlePull(ctx context.Context, cmd *cli.Command) error {
 	if cmd.Root().Bool("debug") {
 		opts = append(opts, debugMiddlewareOption)
 	}
-	opts = append(opts, platformRequestOptions(cmd.String("platform"))...)
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")

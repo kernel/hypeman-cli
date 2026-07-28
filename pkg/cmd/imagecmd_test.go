@@ -12,7 +12,7 @@ func TestBuildImageNewParams(t *testing.T) {
 		"env=staging",
 		"team=cli",
 		"missing-delimiter",
-	})
+	}, "")
 
 	require.Equal(t, "docker.io/library/alpine:latest", params.Name)
 	assert.Equal(t, map[string]string{
@@ -20,14 +20,20 @@ func TestBuildImageNewParams(t *testing.T) {
 		"team": "cli",
 	}, params.Tags)
 	assert.Equal(t, []string{"missing-delimiter"}, malformed)
+	assert.False(t, params.Platform.Valid())
 }
 
-// TestPlatformFromRaw guards the N4 image-list PLATFORM column: the value is read
-// from the raw server payload (the SDK model predates the field) and falls back
-// to "-" when absent.
-func TestPlatformFromRaw(t *testing.T) {
-	assert.Equal(t, "linux/amd64", platformFromRaw(`{"name":"alpine","platform":"linux/amd64"}`))
-	assert.Equal(t, "-", platformFromRaw(`{"name":"alpine"}`))
-	assert.Equal(t, "-", platformFromRaw(`{"name":"alpine","platform":""}`))
-	assert.Equal(t, "-", platformFromRaw(""))
+func TestBuildImageNewParamsPlatform(t *testing.T) {
+	params, malformed := buildImageNewParams("docker.io/library/alpine:latest", nil, "linux/amd64")
+
+	require.Empty(t, malformed)
+	require.True(t, params.Platform.Valid())
+	assert.Equal(t, "linux/amd64", params.Platform.Value)
+}
+
+// TestPlatformOrDash guards the image-list PLATFORM column, which falls back to
+// "-" when the server reports no resolved platform.
+func TestPlatformOrDash(t *testing.T) {
+	assert.Equal(t, "linux/amd64", platformOrDash("linux/amd64"))
+	assert.Equal(t, "-", platformOrDash(""))
 }
