@@ -475,4 +475,22 @@ func TestPlanIngressActionConflictsWhenRenameCandidateIsAmbiguous(t *testing.T) 
 	assert.Equal(t, "conflict", action.Action)
 	assert.Equal(t, "multiple owned ingresses for service have changed names", action.Reason)
 	assert.Empty(t, action.ingressID)
+	// The conflict still claims both candidates so prune planning does not
+	// also propose deleting them.
+	assert.ElementsMatch(t, []string{"old-http-id", "old-grpc-id"}, action.claimedIngressIDs)
+}
+
+func TestPruneActionsSkipsIngressesClaimedByConflict(t *testing.T) {
+	owned := []hypeman.Ingress{
+		{ID: "old-http-id", Name: "app-api-http", Tags: composeTags("app", "api", composeResourceIngress, "http-hash")},
+		{ID: "old-grpc-id", Name: "app-api-grpc", Tags: composeTags("app", "api", composeResourceIngress, "grpc-hash")},
+	}
+	actions := []Action{{
+		Action:            "conflict",
+		Type:              "ingress",
+		Name:              "app-api-public",
+		claimedIngressIDs: []string{"old-http-id", "old-grpc-id"},
+	}}
+
+	assert.Empty(t, pruneActions(nil, owned, actions))
 }

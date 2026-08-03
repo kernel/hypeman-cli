@@ -341,6 +341,16 @@ func TestPlanVolumeAction(t *testing.T) {
 	action = planVolumeAction(desired, nil, []hypeman.Volume{{ID: "vol-9", Name: "stateful-data"}})
 	assert.Equal(t, "conflict", action.Action)
 	assert.Equal(t, "name exists without compose ownership", action.Reason)
+
+	// A volume owned by a different compose project is also a conflict, with
+	// a reason that says so rather than claiming missing ownership.
+	action = planVolumeAction(desired, nil, []hypeman.Volume{{
+		ID:   "vol-10",
+		Name: "stateful-data",
+		Tags: composeVolumeTags("other-project", "hash-z"),
+	}})
+	assert.Equal(t, "conflict", action.Action)
+	assert.Equal(t, `name is owned by a different compose project "other-project"`, action.Reason)
 }
 
 // fakeHypeman is an in-memory Hypeman API seam covering the endpoints compose
@@ -352,10 +362,18 @@ type fakeHypeman struct {
 	mu        sync.Mutex
 	volumes   map[string]*fakeVolume
 	instances map[string]*fakeInstance
+	ingresses map[string]*fakeIngress
 	nextID    int
 	requests  []string
 
 	failInstanceCreates int
+}
+
+type fakeIngress struct {
+	id        string
+	name      string
+	hostnames []string
+	tags      map[string]string
 }
 
 type fakeVolume struct {
@@ -380,6 +398,7 @@ func newFakeHypeman(t *testing.T) (*fakeHypeman, *httptest.Server) {
 		t:         t,
 		volumes:   map[string]*fakeVolume{},
 		instances: map[string]*fakeInstance{},
+		ingresses: map[string]*fakeIngress{},
 	}
 	server := httptest.NewServer(http.HandlerFunc(fake.serve))
 	t.Cleanup(server.Close)
@@ -411,7 +430,11 @@ func (f *fakeHypeman) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(path, "instances/") && r.Method == http.MethodDelete:
 		f.deleteInstance(w, strings.TrimPrefix(path, "instances/"))
 	case path == "ingresses" && r.Method == http.MethodGet:
-		writeJSON(w, []any{})
+		f.listIngresses(w, r)
+	case path == "ingresses" && r.Method == http.MethodPost:
+		f.createIngress(w, r)
+	case strings.HasPrefix(path, "ingresses/") && r.Method == http.MethodDelete:
+		f.deleteIngress(w, strings.TrimPrefix(path, "ingresses/"))
 	case strings.HasPrefix(path, "images/") && r.Method == http.MethodGet:
 		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
 	case path == "images" && r.Method == http.MethodPost:
@@ -558,6 +581,81 @@ func (f *fakeHypeman) deleteInstance(w http.ResponseWriter, id string) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func ingressJSON(ing *fakeIngress) map[string]any {
+	rules := []map[string]any{}
+	for _, hostname := range ing.hostnames {
+		rules = append(rules, map[string]any{
+			"match":  map[string]any{"hostname": hostname},
+			"target": map[string]any{"instance": "", "port": 0},
+		})
+	}
+	return map[string]any{
+		"id":         ing.id,
+		"created_at": time.Now().UTC().Format(time.RFC3339),
+		"name":       ing.name,
+		"rules":      rules,
+		"tags":       ing.tags,
+	}
+}
+
+func (f *fakeHypeman) listIngresses(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	filter := tagFilter(r)
+	out := []map[string]any{}
+	for _, ing := range f.ingresses {
+		if !tagsMatch(ing.tags, filter) {
+			continue
+		}
+		out = append(out, ingressJSON(ing))
+	}
+	writeJSON(w, out)
+}
+
+func (f *fakeHypeman) createIngress(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name  string            `json:"name"`
+		Tags  map[string]string `json:"tags"`
+		Rules []struct {
+			Match struct {
+				Hostname string `json:"hostname"`
+			} `json:"match"`
+		} `json:"rules"`
+	}
+	require.NoError(f.t, json.NewDecoder(r.Body).Decode(&body))
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var hostnames []string
+	for _, rule := range body.Rules {
+		hostnames = append(hostnames, rule.Match.Hostname)
+	}
+	// The server enforces hostname uniqueness across ingresses.
+	for _, existing := range f.ingresses {
+		for _, taken := range existing.hostnames {
+			for _, want := range hostnames {
+				if want != "" && want == taken {
+					http.Error(w, fmt.Sprintf(`{"error":"hostname %s is already in use by ingress %s"}`, want, existing.name), http.StatusConflict)
+					return
+				}
+			}
+		}
+	}
+	ing := &fakeIngress{id: f.id("ing"), name: body.Name, hostnames: hostnames, tags: body.Tags}
+	f.ingresses[ing.id] = ing
+	writeJSON(w, ingressJSON(ing))
+}
+
+func (f *fakeHypeman) deleteIngress(w http.ResponseWriter, id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.ingresses[id]; !ok {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
+	delete(f.ingresses, id)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (f *fakeHypeman) onlyInstance() *fakeInstance {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -597,14 +695,24 @@ func (f *fakeHypeman) countRequests(prefix string) int {
 }
 
 func (f *fakeHypeman) requestIndex(prefix string) int {
+	return f.requestIndexAfter(prefix, 0)
+}
+
+func (f *fakeHypeman) requestIndexAfter(prefix string, after int) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for i, req := range f.requests {
-		if strings.HasPrefix(req, prefix) {
+		if i >= after && strings.HasPrefix(req, prefix) {
 			return i
 		}
 	}
 	return -1
+}
+
+func (f *fakeHypeman) requestCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.requests)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -900,6 +1008,159 @@ services:
 	assert.False(t, cacheExists)
 	assert.True(t, unmanagedAlive, "unmanaged instance must not be pruned")
 	assert.Equal(t, 2, dbCount) // db instance + unmanaged
+}
+
+func TestComposeUpPrunesBeforeCreatesSoMovedHostnameDoesNotWedge(t *testing.T) {
+	fake, server := newFakeHypeman(t)
+	dir := t.TempDir()
+	composePath := writeComposeFile(t, dir, `
+version: 1
+name: web
+services:
+  old:
+    image: nginx:1
+    ingress:
+      - hostname: app.example.com
+        target_port: 80
+`)
+	ctx := context.Background()
+
+	_, err := newTestRunner(t, composePath, server).Up(ctx, UpOptions{})
+	require.NoError(t, err)
+	require.Len(t, fake.ingresses, 1)
+
+	// Move the hostname to a replacement service: the old service (and its
+	// owned ingress holding app.example.com) is pruned while the new service
+	// creates an ingress reusing the same hostname. Prune deletes must free
+	// the hostname before the create runs, or up fails deterministically.
+	writeComposeFile(t, dir, `
+version: 1
+name: web
+services:
+  new:
+    image: nginx:1
+    ingress:
+      - hostname: app.example.com
+        target_port: 80
+`)
+	requestsBefore := fake.requestCount()
+	plan, err := newTestRunner(t, composePath, server).Up(ctx, UpOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, 2, plan.Summary.Delete) // old instance + old ingress
+
+	ingressDelete := fake.requestIndexAfter("DELETE /ingresses/", requestsBefore)
+	ingressCreate := fake.requestIndexAfter("POST /ingresses", requestsBefore)
+	require.GreaterOrEqual(t, ingressDelete, 0)
+	require.GreaterOrEqual(t, ingressCreate, 0)
+	assert.Less(t, ingressDelete, ingressCreate, "pruned ingress must be deleted before the new ingress is created")
+
+	// Plan order matches apply order: deletes precede creates.
+	seenCreate := false
+	for _, action := range plan.Actions {
+		if action.Action == "create" && (action.Type == "instance" || action.Type == "ingress") {
+			seenCreate = true
+		}
+		if action.Action == "delete" {
+			assert.False(t, seenCreate, "prune delete %s %s planned after a create", action.Type, action.Name)
+		}
+	}
+
+	// Only the new service's resources remain, and re-running up is stable.
+	fake.mu.Lock()
+	_, oldAlive := fake.instancesByName("web-old")
+	fake.mu.Unlock()
+	assert.False(t, oldAlive)
+	require.Len(t, fake.ingresses, 1)
+	for _, ing := range fake.ingresses {
+		assert.Equal(t, "web-new-0", ing.name)
+	}
+	_, err = newTestRunner(t, composePath, server).Up(ctx, UpOptions{})
+	require.NoError(t, err)
+}
+
+func TestComposePlanConflictDoesNotPlanPruneForAmbiguousRenameCandidates(t *testing.T) {
+	fake, server := newFakeHypeman(t)
+	dir := t.TempDir()
+	composePath := writeComposeFile(t, dir, `
+version: 1
+name: app
+services:
+  api:
+    image: svc:1
+    ingress:
+      - name: app-api-http
+        hostname: http.example.com
+        target_port: 80
+      - name: app-api-grpc
+        hostname: grpc.example.com
+        target_port: 81
+`)
+	ctx := context.Background()
+
+	_, err := newTestRunner(t, composePath, server).Up(ctx, UpOptions{})
+	require.NoError(t, err)
+	require.Len(t, fake.ingresses, 2)
+
+	// Collapsing both rules into one renamed rule makes both owned ingresses
+	// rename candidates for the same desired ingress: an ambiguous conflict.
+	writeComposeFile(t, dir, `
+version: 1
+name: app
+services:
+  api:
+    image: svc:1
+    ingress:
+      - name: app-api-public
+        hostname: public.example.com
+        target_port: 80
+`)
+	plan, err := newTestRunner(t, composePath, server).Plan(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, plan.Summary.Conflict)
+	for _, action := range plan.Actions {
+		assert.NotEqual(t, "delete", action.Action,
+			"conflicted rename candidates must not also be planned for deletion: %s %s", action.Type, action.Name)
+	}
+
+	// Up refuses and touches nothing.
+	_, err = newTestRunner(t, composePath, server).Up(ctx, UpOptions{})
+	require.ErrorContains(t, err, "conflicts found")
+	assert.Equal(t, 0, fake.countRequests("DELETE /ingresses/"))
+	require.Len(t, fake.ingresses, 2)
+}
+
+func TestComposeUpSharesVolumeLookupAcrossInstanceCreates(t *testing.T) {
+	fake, server := newFakeHypeman(t)
+	dir := t.TempDir()
+	composePath := writeComposeFile(t, dir, `
+version: 1
+name: stateful
+volumes:
+  data:
+    size_gb: 5
+  logs:
+    size_gb: 1
+services:
+  db:
+    image: postgres:16
+    volumes:
+      - data:/var/lib/postgresql/data
+  worker:
+    image: worker:1
+    volumes:
+      - data:/var/lib/data
+      - logs:/var/log/worker
+`)
+	ctx := context.Background()
+
+	_, err := newTestRunner(t, composePath, server).Up(ctx, UpOptions{})
+	require.NoError(t, err)
+	require.Len(t, fake.instances, 2)
+
+	// Plan lists volumes twice (owned + all). The apply pass resolves volume
+	// names for both instance creates from a single shared list, not one
+	// list per instance create.
+	assert.Equal(t, 3, fake.countRequests("GET /volumes"))
 }
 
 func (f *fakeHypeman) instancesByName(name string) (*fakeInstance, bool) {

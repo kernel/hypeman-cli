@@ -103,9 +103,9 @@ All compose commands honor global output flags such as `--format json`, `--forma
 1. build Dockerfile services whose generated images are missing
 2. ensure referenced images exist and are ready
 3. create declared volumes
-4. create or replace instances
-5. create or replace ingresses
-6. delete owned instances and ingresses that are no longer declared
+4. delete owned instances and ingresses that are no longer declared (pruning frees unique keys such as ingress hostnames before they are reused)
+5. create or replace instances
+6. create or replace ingresses
 
 `down` deletes only instances and ingresses tagged as owned by the compose file. Volumes owned by the file are retained and reported as skipped unless `--volumes` is passed. Images are left in place because they can be shared by normal `hypeman run` usage or other compose files.
 

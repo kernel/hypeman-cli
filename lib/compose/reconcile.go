@@ -75,8 +75,9 @@ func (r *Runner) Plan(ctx context.Context) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
+	var instanceActions []Action
 	for _, inst := range desiredInstances {
-		actions = append(actions, planInstanceAction(inst, existingInstances, *allInstances))
+		instanceActions = append(instanceActions, planInstanceAction(inst, existingInstances, *allInstances))
 	}
 
 	existingIngresses, err := r.listComposeIngresses(ctx)
@@ -88,13 +89,23 @@ func (r *Runner) Plan(ctx context.Context) (Plan, error) {
 		return Plan{}, err
 	}
 	desiredIngressNames := desiredIngressNamesByService(desiredIngresses)
+	var ingressActions []Action
 	for _, ingress := range desiredIngresses {
-		actions = append(actions, planIngressAction(ingress, existingIngresses, *allIngresses, desiredIngressNames[ingress.Service]))
+		ingressActions = append(ingressActions, planIngressAction(ingress, existingIngresses, *allIngresses, desiredIngressNames[ingress.Service]))
 	}
 
 	// Prune owned instances and ingresses that no desired resource claims.
 	// Unmanaged resources (no compose ownership tags) are never touched.
-	actions = append(actions, pruneActions(existingInstances, existingIngresses, actions)...)
+	// Prune deletes are planned before instance/ingress creates and replaces
+	// (and Up applies actions in plan order) so a pruned resource frees its
+	// unique keys — names, ingress hostnames — before a new resource reuses
+	// them. This mirrors applyReplace's delete-then-create.
+	claimed := make([]Action, 0, len(instanceActions)+len(ingressActions))
+	claimed = append(claimed, instanceActions...)
+	claimed = append(claimed, ingressActions...)
+	actions = append(actions, pruneActions(existingInstances, existingIngresses, claimed)...)
+	actions = append(actions, instanceActions...)
+	actions = append(actions, ingressActions...)
 
 	return Plan{
 		Name:    r.spec.Name,
@@ -115,6 +126,10 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (Plan, error) {
 	if blockers := replacementBlockers(result.Actions, opts.Replace); len(blockers) > 0 {
 		return result, fmt.Errorf("replace required:\n%s\n\nRun again with --replace to recreate changed resources.", strings.Join(blockers, "\n"))
 	}
+
+	// Fresh volume-name lookup for this apply pass; the first instance create
+	// populates it (after volume creates have run) and later creates reuse it.
+	r.volumeIDsByName = nil
 
 	for i := range result.Actions {
 		action := &result.Actions[i]
@@ -545,7 +560,11 @@ func planVolumeAction(desired desiredVolume, owned []hypeman.Volume, all []hypem
 	for _, vol := range all {
 		if vol.Name == desired.Name {
 			action.Action = "conflict"
-			action.Reason = "name exists without compose ownership"
+			if project := vol.Tags[composeTagName]; project != "" {
+				action.Reason = fmt.Sprintf("name is owned by a different compose project %q", project)
+			} else {
+				action.Reason = "name exists without compose ownership"
+			}
 			action.volumeID = vol.ID
 			return action
 		}
@@ -567,6 +586,11 @@ func pruneActions(ownedInstances []hypeman.Instance, ownedIngresses []hypeman.In
 		}
 		if action.ingressID != "" {
 			claimedIngresses[action.ingressID] = struct{}{}
+		}
+		// Ambiguous-rename conflicts carry no single ingressID but still
+		// claim their candidates so plan doesn't also propose deleting them.
+		for _, id := range action.claimedIngressIDs {
+			claimedIngresses[id] = struct{}{}
 		}
 	}
 	var pruned []Action
@@ -645,6 +669,11 @@ func planIngressAction(desired desiredIngress, owned []hypeman.Ingress, all []hy
 	if len(renameCandidates) > 1 {
 		action.Action = "conflict"
 		action.Reason = "multiple owned ingresses for service have changed names"
+		// The conflict blocks Up, but claim the candidates so pruneActions
+		// doesn't also plan deletes for them.
+		for _, ing := range renameCandidates {
+			action.claimedIngressIDs = append(action.claimedIngressIDs, ing.ID)
+		}
 		return action
 	}
 	for _, ing := range all {
@@ -709,17 +738,22 @@ func (r *Runner) resolveInstanceVolumeIDs(ctx context.Context, input *hypeman.In
 	if len(input.Volumes) == 0 {
 		return nil
 	}
-	volumes, err := r.listComposeVolumes(ctx)
-	if err != nil {
-		return err
-	}
-	idsByName := make(map[string]string, len(volumes))
-	for _, vol := range volumes {
-		idsByName[vol.Name] = vol.ID
+	// The name→ID lookup is listed once per apply pass and shared across
+	// instance creates. Volume actions are planned before instance actions,
+	// so the first resolve already sees every volume created this pass.
+	if r.volumeIDsByName == nil {
+		volumes, err := r.listComposeVolumes(ctx)
+		if err != nil {
+			return err
+		}
+		r.volumeIDsByName = make(map[string]string, len(volumes))
+		for _, vol := range volumes {
+			r.volumeIDsByName[vol.Name] = vol.ID
+		}
 	}
 	for i := range input.Volumes {
 		name := input.Volumes[i].VolumeID
-		id, ok := idsByName[name]
+		id, ok := r.volumeIDsByName[name]
 		if !ok {
 			return fmt.Errorf("volume %s for instance %s not found (volume creation may have failed)", name, input.Name)
 		}
