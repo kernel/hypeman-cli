@@ -88,7 +88,7 @@ func TestBuildComposeInstanceInputIncludesPolicyFields(t *testing.T) {
 		},
 	}
 
-	input := buildComposeInstanceInput("hypeship-otel-otelcol", service)
+	input := buildComposeInstanceInput("hypeship-otel-otelcol", service, nil)
 	inputJSON := map[string]any{}
 	inputData, err := json.Marshal(input)
 	require.NoError(t, err)
@@ -138,7 +138,7 @@ func TestDesiredResourcesUseDeterministicNamesAndTags(t *testing.T) {
 		},
 	}
 
-	_, instances, ingresses, images, err := runner.desiredResources()
+	_, _, instances, ingresses, images, err := runner.desiredResources()
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"otel/opentelemetry-collector-contrib:0.108.0"}, images)
@@ -177,7 +177,7 @@ func TestDesiredResourcesUseExplicitResourceNames(t *testing.T) {
 		},
 	}
 
-	_, instances, ingresses, _, err := runner.desiredResources()
+	_, _, instances, ingresses, _, err := runner.desiredResources()
 	require.NoError(t, err)
 
 	require.Len(t, instances, 1)
@@ -270,7 +270,7 @@ services:
 	require.NoError(t, err)
 
 	runner := Runner{file: composePath, spec: spec}
-	builds, instances, _, images, err := runner.desiredResources()
+	builds, _, instances, _, images, err := runner.desiredResources()
 	require.NoError(t, err)
 
 	require.Empty(t, images)
@@ -280,18 +280,18 @@ services:
 	assert.Regexp(t, `^compose/worker-stack/worker:[a-f0-9]{12}$`, builds[0].Image)
 	assert.Equal(t, builds[0].Image, instances[0].Input.Image)
 
-	again, _, _, _, err := runner.desiredResources()
+	again, _, _, _, _, err := runner.desiredResources()
 	require.NoError(t, err)
 	require.Equal(t, builds[0].Image, again[0].Image)
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".dockerignore"), []byte("*.tmp\n"), 0644))
-	dockerignoreChanged, _, _, _, err := runner.desiredResources()
+	dockerignoreChanged, _, _, _, _, err := runner.desiredResources()
 	require.NoError(t, err)
 	require.NotEqual(t, builds[0].Image, dockerignoreChanged[0].Image)
 
 	require.NoError(t, os.Remove(filepath.Join(dir, ".dockerignore")))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "worker"), []byte("echo changed\n"), 0644))
-	changed, _, _, _, err := runner.desiredResources()
+	changed, _, _, _, _, err := runner.desiredResources()
 	require.NoError(t, err)
 	require.NotEqual(t, builds[0].Image, changed[0].Image)
 }

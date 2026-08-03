@@ -14,6 +14,7 @@ const (
 	composeResourceInstance = "instance"
 	composeResourceIngress  = "ingress"
 	composeResourceBuild    = "build"
+	composeResourceVolume   = "volume"
 )
 
 type Runner struct {
@@ -28,6 +29,13 @@ type UpOptions struct {
 	Wait        bool
 	WaitTimeout string
 	Verbose     bool
+}
+
+type DownOptions struct {
+	Verbose bool
+	// Volumes also deletes retained volumes owned by the compose file.
+	// This destroys their data and cannot be undone.
+	Volumes bool
 }
 
 type Plan struct {
@@ -55,8 +63,10 @@ type Action struct {
 
 	instanceID    string
 	ingressID     string
+	volumeID      string
 	instanceInput hypeman.InstanceNewParams
 	ingressInput  hypeman.IngressNewParams
+	volumeInput   hypeman.VolumeNewParams
 	buildInput    *desiredBuild
 }
 

@@ -80,7 +80,7 @@ hypeman rm --force --all
 
 ### Compose
 
-`hypeman compose` applies a small declarative workload file for images or Dockerfiles, instances, restart/health settings, and ingresses. See [lib/compose/README.md](lib/compose/README.md#compose).
+`hypeman compose` applies a small declarative workload file for images or Dockerfiles, retained volumes, instances, restart/health settings, and ingresses. See [lib/compose/README.md](lib/compose/README.md#compose).
 
 More ingress features:
 - Automatic certs
