@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,92 @@ type composeSpec struct {
 	Version  int                           `json:"version" yaml:"version"`
 	Name     string                        `json:"name" yaml:"name"`
 	Services map[string]composeServiceSpec `json:"services" yaml:"services"`
+	Volumes  map[string]composeVolumeSpec  `json:"volumes,omitempty" yaml:"volumes,omitempty"`
+}
+
+// composeVolumeSpec declares a retained named volume. Volumes are created
+// before instances, survive instance replacement and `compose down`, and are
+// only destroyed by an explicit destructive option (`compose down --volumes`).
+type composeVolumeSpec struct {
+	Name   string `json:"name,omitempty" yaml:"name"`
+	SizeGB int64  `json:"size_gb" yaml:"size_gb"`
+}
+
+// composeVolumeMountSpec attaches a declared volume to a service. It accepts
+// either the shorthand string form "volume:/abs/path[:ro|rw]" or the mapping
+// form:
+//
+//	volume: data
+//	mount_path: /var/lib/data
+//	readonly: true
+type composeVolumeMountSpec struct {
+	Volume    string `json:"volume" yaml:"volume"`
+	MountPath string `json:"mount_path" yaml:"mount_path"`
+	Readonly  bool   `json:"readonly,omitempty" yaml:"readonly"`
+}
+
+func (m *composeVolumeMountSpec) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		var shorthand string
+		if err := node.Decode(&shorthand); err != nil {
+			return err
+		}
+		parsed, err := parseComposeVolumeMountShorthand(shorthand)
+		if err != nil {
+			return fmt.Errorf("line %d: %w", node.Line, err)
+		}
+		*m = parsed
+		return nil
+	case yaml.MappingNode:
+		// The top-level strict decoder hands custom unmarshalers the raw
+		// node, so enforce known fields here explicitly.
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key := node.Content[i]
+			switch key.Value {
+			case "volume", "mount_path", "readonly":
+			default:
+				return fmt.Errorf("line %d: field %s not found in volume mount", key.Line, key.Value)
+			}
+		}
+		type rawMount composeVolumeMountSpec
+		var raw rawMount
+		if err := node.Decode(&raw); err != nil {
+			return err
+		}
+		*m = composeVolumeMountSpec(raw)
+		return nil
+	default:
+		return fmt.Errorf("line %d: volume mount must be a string or mapping", node.Line)
+	}
+}
+
+func parseComposeVolumeMountShorthand(value string) (composeVolumeMountSpec, error) {
+	parts := strings.Split(value, ":")
+	if len(parts) < 2 || len(parts) > 3 {
+		return composeVolumeMountSpec{}, fmt.Errorf("volume mount %q must be in the form volume:/abs/path[:ro|rw]", value)
+	}
+	mount := composeVolumeMountSpec{
+		Volume:    strings.TrimSpace(parts[0]),
+		MountPath: parts[1],
+	}
+	if mount.Volume == "" {
+		return composeVolumeMountSpec{}, fmt.Errorf("volume mount %q is missing the volume name", value)
+	}
+	if mount.MountPath == "" {
+		return composeVolumeMountSpec{}, fmt.Errorf("volume mount %q is missing the mount path", value)
+	}
+	if len(parts) == 3 {
+		switch parts[2] {
+		case "ro":
+			mount.Readonly = true
+		case "rw":
+			mount.Readonly = false
+		default:
+			return composeVolumeMountSpec{}, fmt.Errorf("volume mount %q has invalid mode %q (must be ro or rw)", value, parts[2])
+		}
+	}
+	return mount, nil
 }
 
 type composeServiceSpec struct {
@@ -28,6 +115,7 @@ type composeServiceSpec struct {
 	Restart    *composeRestartSpec      `json:"restart,omitempty" yaml:"restart"`
 	Health     *composeCheckSpec        `json:"healthcheck,omitempty" yaml:"healthcheck"`
 	Ingress    []composeIngressRuleSpec `json:"ingress,omitempty" yaml:"ingress"`
+	Volumes    []composeVolumeMountSpec `json:"volumes,omitempty" yaml:"volumes"`
 }
 
 type composeResourcesSpec struct {
@@ -90,7 +178,9 @@ func loadComposeSpec(path string) (composeSpec, error) {
 		return composeSpec{}, fmt.Errorf("read compose file: %w", err)
 	}
 	var spec composeSpec
-	if err := yaml.Unmarshal(data, &spec); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&spec); err != nil {
 		return composeSpec{}, fmt.Errorf("parse compose file: %w", err)
 	}
 	if err := interpolateComposeSpec(&spec, filepath.Dir(path)); err != nil {
@@ -118,6 +208,27 @@ func validateComposeSpec(spec *composeSpec) error {
 		return fmt.Errorf("compose services must include at least one service")
 	}
 
+	volumeNames := map[string]string{}
+	for key, volume := range spec.Volumes {
+		if !composeNamePattern.MatchString(key) {
+			return fmt.Errorf("volume %q must contain only lowercase letters, digits, and dashes", key)
+		}
+		if volume.Name != "" && !composeNamePattern.MatchString(volume.Name) {
+			return fmt.Errorf("volume %q name must contain only lowercase letters, digits, and dashes", key)
+		}
+		volumeName := composeVolumeName(spec.Name, key, volume)
+		if len(volumeName) > 63 {
+			return fmt.Errorf("volume %q produces volume name %q longer than 63 characters", key, volumeName)
+		}
+		if existing, ok := volumeNames[volumeName]; ok {
+			return fmt.Errorf("volume %q produces duplicate volume name %q already used by volume %q", key, volumeName, existing)
+		}
+		volumeNames[volumeName] = key
+		if volume.SizeGB <= 0 {
+			return fmt.Errorf("volume %q size_gb must be positive", key)
+		}
+	}
+
 	instanceNames := map[string]string{}
 	ingressNames := map[string]string{}
 	for name, service := range spec.Services {
@@ -140,6 +251,30 @@ func validateComposeSpec(spec *composeSpec) error {
 		}
 		if service.Image != "" && service.Dockerfile != "" {
 			return fmt.Errorf("service %q cannot include both image and dockerfile", name)
+		}
+		mountPaths := map[string]int{}
+		mountedVolumes := map[string]int{}
+		for i, mount := range service.Volumes {
+			if mount.Volume == "" {
+				return fmt.Errorf("service %q volume mount %d volume is required", name, i)
+			}
+			if _, ok := spec.Volumes[mount.Volume]; !ok {
+				return fmt.Errorf("service %q volume mount %d references unknown volume %q", name, i, mount.Volume)
+			}
+			if mount.MountPath == "" {
+				return fmt.Errorf("service %q volume mount %d mount_path is required", name, i)
+			}
+			if !strings.HasPrefix(mount.MountPath, "/") {
+				return fmt.Errorf("service %q volume mount %d mount_path %q must be an absolute path", name, i, mount.MountPath)
+			}
+			if existing, ok := mountPaths[mount.MountPath]; ok {
+				return fmt.Errorf("service %q volume mount %d duplicates mount_path %q already used by mount %d", name, i, mount.MountPath, existing)
+			}
+			mountPaths[mount.MountPath] = i
+			if existing, ok := mountedVolumes[mount.Volume]; ok {
+				return fmt.Errorf("service %q volume mount %d mounts volume %q more than once (already used by mount %d)", name, i, mount.Volume, existing)
+			}
+			mountedVolumes[mount.Volume] = i
 		}
 		for i, rule := range service.Ingress {
 			ingressName := composeIngressName(spec.Name, name, i, rule)

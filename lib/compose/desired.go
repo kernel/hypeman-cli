@@ -24,7 +24,13 @@ type desiredIngress struct {
 	Input   hypeman.IngressNewParams
 }
 
-func (r *Runner) desiredResources() ([]desiredBuild, []desiredInstance, []desiredIngress, []string, error) {
+type desiredVolume struct {
+	Name  string
+	Hash  string
+	Input hypeman.VolumeNewParams
+}
+
+func (r *Runner) desiredResources() ([]desiredBuild, []desiredVolume, []desiredInstance, []desiredIngress, []string, error) {
 	serviceNames := make([]string, 0, len(r.spec.Services))
 	imageSet := map[string]struct{}{}
 	for name, service := range r.spec.Services {
@@ -41,6 +47,33 @@ func (r *Runner) desiredResources() ([]desiredBuild, []desiredInstance, []desire
 	}
 	sort.Strings(images)
 
+	volumeKeys := make([]string, 0, len(r.spec.Volumes))
+	for key := range r.spec.Volumes {
+		volumeKeys = append(volumeKeys, key)
+	}
+	sort.Strings(volumeKeys)
+	volumeNames := make(map[string]string, len(volumeKeys))
+	volumes := make([]desiredVolume, 0, len(volumeKeys))
+	for _, key := range volumeKeys {
+		volumeSpec := r.spec.Volumes[key]
+		volumeName := composeVolumeName(r.spec.Name, key, volumeSpec)
+		volumeNames[key] = volumeName
+		volumeInput := hypeman.VolumeNewParams{
+			Name:   volumeName,
+			SizeGB: volumeSpec.SizeGB,
+		}
+		volumeHash, err := shortHash(volumeInput)
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		volumeInput.Tags = composeVolumeTags(r.spec.Name, volumeHash)
+		volumes = append(volumes, desiredVolume{
+			Name:  volumeName,
+			Hash:  volumeHash,
+			Input: volumeInput,
+		})
+	}
+
 	var builds []desiredBuild
 	instances := make([]desiredInstance, 0, len(serviceNames))
 	var ingresses []desiredIngress
@@ -49,16 +82,16 @@ func (r *Runner) desiredResources() ([]desiredBuild, []desiredInstance, []desire
 		if service.Dockerfile != "" {
 			build, err := r.desiredBuildForService(serviceName, service)
 			if err != nil {
-				return nil, nil, nil, nil, err
+				return nil, nil, nil, nil, nil, err
 			}
 			builds = append(builds, build)
 			service.Image = build.Image
 		}
 		instanceName := composeInstanceName(r.spec.Name, serviceName, service)
-		instanceInput := buildComposeInstanceInput(instanceName, service)
+		instanceInput := buildComposeInstanceInput(instanceName, service, volumeNames)
 		instanceHash, err := shortHash(instanceInput)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		instanceInput.Tags = composeTags(r.spec.Name, serviceName, composeResourceInstance, instanceHash)
 		instances = append(instances, desiredInstance{
@@ -73,7 +106,7 @@ func (r *Runner) desiredResources() ([]desiredBuild, []desiredInstance, []desire
 			ingressInput := buildComposeIngressInput(instanceName, ingressName, ingressSpec)
 			ingressHash, err := shortHash(ingressInput)
 			if err != nil {
-				return nil, nil, nil, nil, err
+				return nil, nil, nil, nil, nil, err
 			}
 			ingressInput.Tags = composeTags(r.spec.Name, serviceName, composeResourceIngress, ingressHash)
 			ingresses = append(ingresses, desiredIngress{
@@ -84,13 +117,32 @@ func (r *Runner) desiredResources() ([]desiredBuild, []desiredInstance, []desire
 			})
 		}
 	}
-	return builds, instances, ingresses, images, nil
+	return builds, volumes, instances, ingresses, images, nil
 }
 
-func buildComposeInstanceInput(instanceName string, service composeServiceSpec) hypeman.InstanceNewParams {
+// buildComposeInstanceInput renders the instance create params for a service.
+// volumeNames maps compose volume keys to their resolved Hypeman volume names.
+// Mounts carry the volume *name* (not the server-assigned ID) so the rendered
+// hash stays stable across volume creation; names are resolved to IDs at apply
+// time, immediately before instance creation.
+func buildComposeInstanceInput(instanceName string, service composeServiceSpec, volumeNames map[string]string) hypeman.InstanceNewParams {
 	input := hypeman.InstanceNewParams{
 		Name:  instanceName,
 		Image: service.Image,
+	}
+	if len(service.Volumes) > 0 {
+		mounts := make([]hypeman.VolumeMountParam, 0, len(service.Volumes))
+		for _, mount := range service.Volumes {
+			volumeMount := hypeman.VolumeMountParam{
+				VolumeID:  volumeNames[mount.Volume],
+				MountPath: mount.MountPath,
+			}
+			if mount.Readonly {
+				volumeMount.Readonly = hypeman.Bool(true)
+			}
+			mounts = append(mounts, volumeMount)
+		}
+		input.Volumes = mounts
 	}
 	if len(service.Entrypoint) > 0 {
 		input.Entrypoint = service.Entrypoint
@@ -233,11 +285,28 @@ func composeIngressName(composeName, serviceName string, index int, ingress comp
 	return fmt.Sprintf("%s-%s-%d", composeName, serviceName, index)
 }
 
+func composeVolumeName(composeName, key string, volume composeVolumeSpec) string {
+	if volume.Name != "" {
+		return volume.Name
+	}
+	return composeName + "-" + key
+}
+
 func composeTags(composeName, serviceName, resource, hash string) map[string]string {
 	return map[string]string{
 		composeTagName:     composeName,
 		composeTagService:  serviceName,
 		composeTagResource: resource,
+		composeTagHash:     hash,
+	}
+}
+
+// composeVolumeTags tags a retained volume with compose ownership. Volumes are
+// shared across services, so they carry no service tag.
+func composeVolumeTags(composeName, hash string) map[string]string {
+	return map[string]string{
+		composeTagName:     composeName,
+		composeTagResource: composeResourceVolume,
 		composeTagHash:     hash,
 	}
 }
