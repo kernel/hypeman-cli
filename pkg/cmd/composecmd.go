@@ -88,13 +88,21 @@ var composeUpCmd = cli.Command{
 var composeDownCmd = cli.Command{
 	Name:  "down",
 	Usage: "Delete resources owned by a compose file",
-	Flags: composeFileFlags(),
+	Flags: append(composeFileFlags(),
+		&cli.BoolFlag{
+			Name:  "volumes",
+			Usage: "Also delete retained volumes owned by the compose file (destroys their data)",
+		},
+	),
 	Action: func(ctx context.Context, cmd *cli.Command) error {
 		runner, err := newComposeRunner(cmd)
 		if err != nil {
 			return err
 		}
-		result, err := runner.Down(ctx, cmd.Root().String("format") == "auto")
+		result, err := runner.Down(ctx, compose.DownOptions{
+			Verbose: cmd.Root().String("format") == "auto",
+			Volumes: cmd.Bool("volumes"),
+		})
 		if err != nil {
 			return err
 		}

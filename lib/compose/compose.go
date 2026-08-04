@@ -14,6 +14,7 @@ const (
 	composeResourceInstance = "instance"
 	composeResourceIngress  = "ingress"
 	composeResourceBuild    = "build"
+	composeResourceVolume   = "volume"
 )
 
 type Runner struct {
@@ -21,6 +22,10 @@ type Runner struct {
 	spec   composeSpec
 	client hypeman.Client
 	opts   []option.RequestOption
+
+	// volumeIDsByName caches the compose volume name→ID lookup for a single
+	// Up apply pass so each instance create doesn't re-list volumes.
+	volumeIDsByName map[string]string
 }
 
 type UpOptions struct {
@@ -28,6 +33,13 @@ type UpOptions struct {
 	Wait        bool
 	WaitTimeout string
 	Verbose     bool
+}
+
+type DownOptions struct {
+	Verbose bool
+	// Volumes also deletes retained volumes owned by the compose file.
+	// This destroys their data and cannot be undone.
+	Volumes bool
 }
 
 type Plan struct {
@@ -53,11 +65,17 @@ type Action struct {
 	Service string `json:"service,omitempty"`
 	Reason  string `json:"reason"`
 
-	instanceID    string
-	ingressID     string
-	instanceInput hypeman.InstanceNewParams
-	ingressInput  hypeman.IngressNewParams
-	buildInput    *desiredBuild
+	instanceID string
+	ingressID  string
+	volumeID   string
+	// claimedIngressIDs lists additional owned ingress IDs this action claims
+	// (e.g. ambiguous rename candidates under a conflict) so prune planning
+	// does not also propose deleting them.
+	claimedIngressIDs []string
+	instanceInput     hypeman.InstanceNewParams
+	ingressInput      hypeman.IngressNewParams
+	volumeInput       hypeman.VolumeNewParams
+	buildInput        *desiredBuild
 }
 
 func NewRunner(file string, client hypeman.Client, opts ...option.RequestOption) (*Runner, error) {

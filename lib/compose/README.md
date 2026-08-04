@@ -86,20 +86,28 @@ hypeman compose down -f hypeman.compose.yaml
 
 If a managed instance or ingress exists but the rendered spec changed, `up` reports that replacement is required and exits without changing resources. Re-run with `--replace` to recreate changed resources.
 
+Retained volumes are never deleted by `up` or `down`. Passing `--volumes` to `down` also deletes the volumes owned by the file and **destroys their data**:
+
+```sh
+hypeman compose down -f hypeman.compose.yaml --volumes
+```
+
 All compose commands honor global output flags such as `--format json`, `--format yaml`, and `--transform`.
 
 ### How It Works
 
-`plan` renders the desired resources from the compose file, checks whether referenced images exist, then compares the desired instances and ingresses against existing resources.
+`plan` renders the desired resources from the compose file, checks whether referenced images exist, then compares the desired volumes, instances, and ingresses against existing resources. Owned instances and ingresses that are no longer declared in the file are planned for deletion (pruning); resources without compose ownership tags are never touched.
 
 `up` applies the plan in order:
 
 1. build Dockerfile services whose generated images are missing
 2. ensure referenced images exist and are ready
-3. create or replace instances
-4. create or replace ingresses
+3. create declared volumes
+4. delete owned instances and ingresses that are no longer declared (pruning frees unique keys such as ingress hostnames before they are reused)
+5. create or replace instances
+6. create or replace ingresses
 
-`down` deletes only instances and ingresses tagged as owned by the compose file. Images are left in place because they can be shared by normal `hypeman run` usage or other compose files.
+`down` deletes only instances and ingresses tagged as owned by the compose file. Volumes owned by the file are retained and reported as skipped unless `--volumes` is passed. Images are left in place because they can be shared by normal `hypeman run` usage or other compose files.
 
 Instances and ingresses get compose ownership tags:
 
@@ -110,7 +118,48 @@ hypeman.compose.resource
 hypeman.compose.hash
 ```
 
+Volumes get the same ownership tags except `hypeman.compose.service`, because a volume can be shared by multiple services.
+
 The hash is computed from the rendered resource spec before ownership tags are added. Re-running the same file is idempotent: matching resources are reported as unchanged, changed managed resources require `--replace`, and unmanaged resources with the same name are reported as conflicts.
+
+### Retained Volumes
+
+Top-level `volumes` declare named volumes backed by the Hypeman volume API. Services attach them with `volumes` mount declarations:
+
+```yaml
+version: 1
+name: stateful
+
+volumes:
+  data:
+    size_gb: 10
+  logs:
+    name: stateful-logs-explicit # optional explicit name
+    size_gb: 1
+
+services:
+  db:
+    image: postgres:16
+    volumes:
+      - data:/var/lib/postgresql/data        # shorthand: volume:/abs/path[:ro|rw]
+      - volume: logs                          # mapping form
+        mount_path: /var/log/db
+        readonly: true
+```
+
+By default, volumes are named `<compose name>-<volume key>`; set `name` for a stable external name, just like services and ingresses.
+
+Volumes are created before the instances that mount them and are **retained**: instance replacement (via `--replace`), `compose down`, and pruning never delete them, and `compose up` on an existing volume reports it as unchanged. Deleting a retained volume requires the explicit destructive option `hypeman compose down --volumes`.
+
+Volumes are immutable once created. Changing a declared volume (for example `size_gb`) makes `plan` report a conflict and blocks `up`, rather than silently recreating the volume and losing data. To resize, restore the original spec or delete the volume explicitly with `compose down --volumes`.
+
+If instance replacement fails after the old instance was deleted, the retained volume and its data are untouched; re-running `compose up --replace` recreates the instance on the same volume.
+
+Mount declarations are validated strictly: the referenced volume must be declared, the mount path must be absolute, and duplicate mount paths or mounting the same volume twice in one service are rejected.
+
+### Strict Parsing
+
+Compose files are parsed strictly: unknown fields and duplicate keys fail validation before any resource is applied. This applies at every level, including volume mount mappings.
 
 ### Interpolation
 
