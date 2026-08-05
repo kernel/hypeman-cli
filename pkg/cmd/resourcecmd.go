@@ -35,8 +35,12 @@ Examples:
 	Commands: []*cli.Command{
 		&resourcesReclaimMemoryCmd,
 	},
-	Action:          handleResources,
-	HideHelpCommand: true,
+	// urfave/cli falls back to the no-subcommand help template when a command has
+	// exactly one subcommand and the help command is hidden, which would drop
+	// reclaim-memory from `hypeman resources --help`.
+	CustomHelpTemplate: cli.SubcommandHelpTemplate,
+	Action:             handleResources,
+	HideHelpCommand:    true,
 }
 
 var resourcesReclaimMemoryCmd = cli.Command{

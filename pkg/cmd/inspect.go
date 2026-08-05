@@ -50,9 +50,8 @@ func handleInspect(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	// Render from the raw server response rather than the typed struct: SDK
-	// v0.20.0's Instance model predates fields like `platform`, so marshaling the
-	// struct would silently drop them. RawJSON carries the full server payload.
+	// Render from the raw server response rather than the typed struct so fields
+	// the server adds ahead of an SDK bump still surface here.
 	raw := instance.RawJSON()
 	if raw == "" {
 		return fmt.Errorf("instance response did not include a raw payload")
