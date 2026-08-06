@@ -176,10 +176,7 @@ func handleBuild(ctx context.Context, cmd *cli.Command) error {
 		params.BaseImageDigest = hypeman.Opt(v)
 	}
 	if v := cmd.String("builder"); v != "" {
-		// builder_id is not on BuildNewParams in the generated SDK yet; extra fields
-		// are written into the same multipart body. Move to params.BuilderID once
-		// the SDK exposes it.
-		params.SetExtraFields(map[string]any{"builder_id": v})
+		params.BuilderID = hypeman.Opt(v)
 	}
 	if v := cmd.String("cache-scope"); v != "" {
 		params.CacheScope = hypeman.Opt(v)

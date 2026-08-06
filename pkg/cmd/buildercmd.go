@@ -11,10 +11,6 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// The generated SDK does not expose a BuilderService yet, so these commands reach
-// the /builders endpoints through the client's generic request methods. Replace
-// them with client.Builders.* once that service ships.
-
 var builderCmd = cli.Command{
 	Name:    "builder",
 	Aliases: []string{"builders"},
@@ -119,29 +115,25 @@ var builderPruneCmd = cli.Command{
 	HideHelpCommand: true,
 }
 
-type builderCreateRequest struct {
-	ID         string            `json:"id,omitempty"`
-	DiskSizeGB int64             `json:"disk_size_gb,omitempty"`
-	Name       string            `json:"name,omitempty"`
-	Tags       map[string]string `json:"tags,omitempty"`
-}
-
 func handleBuilderCreate(ctx context.Context, cmd *cli.Command) error {
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 
-	body := builderCreateRequest{
-		ID:   cmd.String("id"),
-		Name: cmd.String("name"),
+	params := hypeman.BuilderNewParams{}
+	if v := cmd.String("id"); v != "" {
+		params.ID = hypeman.Opt(v)
+	}
+	if v := cmd.String("name"); v != "" {
+		params.Name = hypeman.Opt(v)
 	}
 	if cmd.IsSet("disk-size") {
-		body.DiskSizeGB = int64(cmd.Int("disk-size"))
+		params.DiskSizeGB = hypeman.Opt(int64(cmd.Int("disk-size")))
 	}
 	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
 	for _, malformed := range malformedTags {
 		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
 	}
 	if len(tags) > 0 {
-		body.Tags = tags
+		params.Tags = tags
 	}
 
 	var opts []option.RequestOption
@@ -149,22 +141,27 @@ func handleBuilderCreate(ctx context.Context, cmd *cli.Command) error {
 		opts = append(opts, debugMiddlewareOption)
 	}
 
-	var res []byte
-	opts = append(opts, option.WithResponseBodyInto(&res))
-	if err := client.Post(ctx, "builders", body, nil, opts...); err != nil {
-		return err
-	}
-
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
 
-	obj := gjson.ParseBytes(res)
-	if format == "auto" || format == "" {
-		fmt.Println(obj.Get("id").String())
-		return nil
+	// WithResponseBodyInto captures the raw body but leaves the typed result nil, so
+	// only request it for the formats that render the response verbatim.
+	if format != "auto" && format != "" {
+		var res []byte
+		opts = append(opts, option.WithResponseBodyInto(&res))
+		if _, err := client.Builders.New(ctx, params, opts...); err != nil {
+			return err
+		}
+		return ShowJSON(os.Stdout, "builder create", gjson.ParseBytes(res), format, transform)
 	}
 
-	return ShowJSON(os.Stdout, "builder create", obj, format, transform)
+	builder, err := client.Builders.New(ctx, params, opts...)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(builder.ID)
+	return nil
 }
 
 func handleBuilderList(ctx context.Context, cmd *cli.Command) error {
@@ -175,41 +172,44 @@ func handleBuilderList(ctx context.Context, cmd *cli.Command) error {
 		opts = append(opts, debugMiddlewareOption)
 	}
 
+	params := hypeman.BuilderListParams{}
 	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
 	for _, malformed := range malformedTags {
 		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag filter: %s\n", malformed)
 	}
-	for key, value := range tags {
-		opts = append(opts, option.WithQuery(fmt.Sprintf("tags[%s]", key), value))
-	}
-
-	var res []byte
-	opts = append(opts, option.WithResponseBodyInto(&res))
-	if err := client.Get(ctx, "builders", nil, nil, opts...); err != nil {
-		return err
+	if len(tags) > 0 {
+		params.Tags = tags
 	}
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
-	builders := gjson.ParseBytes(res)
 
 	if format != "auto" && format != "" {
-		return ShowJSON(os.Stdout, "builder list", builders, format, transform)
+		var res []byte
+		opts = append(opts, option.WithResponseBodyInto(&res))
+		if _, err := client.Builders.List(ctx, params, opts...); err != nil {
+			return err
+		}
+		return ShowJSON(os.Stdout, "builder list", gjson.ParseBytes(res), format, transform)
+	}
+
+	builders, err := client.Builders.List(ctx, params, opts...)
+	if err != nil {
+		return err
 	}
 
 	if cmd.Bool("quiet") {
-		builders.ForEach(func(_, value gjson.Result) bool {
-			fmt.Println(value.Get("id").String())
-			return true
-		})
+		for _, b := range *builders {
+			fmt.Println(b.ID)
+		}
 		return nil
 	}
 
-	return showBuilderListTable(builders)
+	return showBuilderListTable(*builders)
 }
 
-func showBuilderListTable(builders gjson.Result) error {
-	if !builders.IsArray() || len(builders.Array()) == 0 {
+func showBuilderListTable(builders []hypeman.Builder) error {
+	if len(builders) == 0 {
 		fmt.Fprintln(os.Stderr, "No builders found.")
 		return nil
 	}
@@ -217,29 +217,28 @@ func showBuilderListTable(builders gjson.Result) error {
 	table := NewTableWriter(os.Stdout, "ID", "NAME", "STATUS", "DISK", "ACTIVE BUILD", "QUEUED", "LAST USED", "CREATED")
 	table.TruncOrder = []int{0, 1, 4} // ID first, then NAME, ACTIVE BUILD
 
-	builders.ForEach(func(_, value gjson.Result) bool {
-		name := value.Get("name").String()
+	for _, b := range builders {
+		name := b.Name
 		if name == "" {
 			name = "-"
 		}
 
-		activeBuild := value.Get("active_build_id").String()
+		activeBuild := b.ActiveBuildID
 		if activeBuild == "" {
 			activeBuild = "-"
 		}
 
 		table.AddRow(
-			value.Get("id").String(),
+			b.ID,
 			name,
-			value.Get("status").String(),
-			fmt.Sprintf("%d GB", value.Get("disk_size_gb").Int()),
+			string(b.Status),
+			fmt.Sprintf("%d GB", b.DiskSizeGB),
 			activeBuild,
-			fmt.Sprintf("%d", len(value.Get("queued_builds").Array())),
-			FormatTimeAgo(value.Get("last_used_at").Time()),
-			FormatTimeAgo(value.Get("created_at").Time()),
+			fmt.Sprintf("%d", len(b.QueuedBuilds)),
+			FormatTimeAgo(b.LastUsedAt),
+			FormatTimeAgo(b.CreatedAt),
 		)
-		return true
-	})
+	}
 
 	table.Render()
 	return nil
@@ -260,7 +259,7 @@ func handleBuilderGet(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	opts = append(opts, option.WithResponseBodyInto(&res))
-	if err := client.Get(ctx, fmt.Sprintf("builders/%s", id), nil, nil, opts...); err != nil {
+	if _, err := client.Builders.Get(ctx, id, opts...); err != nil {
 		return err
 	}
 
@@ -279,12 +278,12 @@ func handleBuilderDelete(ctx context.Context, cmd *cli.Command) error {
 
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 
-	opts := []option.RequestOption{option.WithHeader("Accept", "*/*")}
+	var opts []option.RequestOption
 	if cmd.Root().Bool("debug") {
 		opts = append(opts, debugMiddlewareOption)
 	}
 
-	if err := client.Delete(ctx, fmt.Sprintf("builders/%s", id), nil, nil, opts...); err != nil {
+	if err := client.Builders.Delete(ctx, id, opts...); err != nil {
 		return err
 	}
 
@@ -305,22 +304,25 @@ func handleBuilderPrune(ctx context.Context, cmd *cli.Command) error {
 		opts = append(opts, debugMiddlewareOption)
 	}
 
-	var res []byte
-	opts = append(opts, option.WithResponseBodyInto(&res))
-	if err := client.Post(ctx, fmt.Sprintf("builders/%s/prune", id), nil, nil, opts...); err != nil {
-		return err
-	}
-
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
 
-	obj := gjson.ParseBytes(res)
-	if format == "auto" || format == "" {
-		fmt.Fprintf(os.Stderr, "Pruning builder %s (status: %s)\n", id, obj.Get("status").String())
-		return nil
+	if format != "auto" && format != "" {
+		var res []byte
+		opts = append(opts, option.WithResponseBodyInto(&res))
+		if _, err := client.Builders.Prune(ctx, id, opts...); err != nil {
+			return err
+		}
+		return ShowJSON(os.Stdout, "builder prune", gjson.ParseBytes(res), format, transform)
 	}
 
-	return ShowJSON(os.Stdout, "builder prune", obj, format, transform)
+	builder, err := client.Builders.Prune(ctx, id, opts...)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "Pruning builder %s (status: %s)\n", id, builder.Status)
+	return nil
 }
 
 func requireBuilderID(cmd *cli.Command, action string) (string, error) {
