@@ -59,6 +59,11 @@ Examples:
 			Usage: "Pinned base image digest for reproducible builds",
 		},
 		&cli.StringFlag{
+			Name:    "builder",
+			Aliases: []string{"builder-id"},
+			Usage:   "Builder ID whose persistent cache disk backs this build (builds on the same builder are serialized)",
+		},
+		&cli.StringFlag{
 			Name:  "cache-scope",
 			Usage: "Tenant-specific cache key prefix",
 		},
@@ -169,6 +174,9 @@ func handleBuild(ctx context.Context, cmd *cli.Command) error {
 
 	if v := cmd.String("base-image-digest"); v != "" {
 		params.BaseImageDigest = hypeman.Opt(v)
+	}
+	if v := cmd.String("builder"); v != "" {
+		params.BuilderID = hypeman.Opt(v)
 	}
 	if v := cmd.String("cache-scope"); v != "" {
 		params.CacheScope = hypeman.Opt(v)
