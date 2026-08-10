@@ -54,11 +54,20 @@ var ingressCreateCmd = cli.Command{
 			Name:  "redirect-http",
 			Usage: "Auto-create HTTP to HTTPS redirect (only applies when --tls is enabled)",
 		},
+		&cli.StringFlag{
+			Name:  "request-header-auth-header",
+			Usage: "Request header that must match before proxying (reserved authentication, cookie, host, framing, proxy, and hop-by-hop headers are not allowed)",
+		},
+		&cli.StringFlag{
+			Name:  "request-header-auth-value",
+			Usage: "Exact header value required before proxying",
+		},
 		&cli.StringSliceFlag{
 			Name: "rule",
-			Usage: "Add a routing rule (can be repeated): hostname[:host-port]=instance:port[,tls][,redirect-http]. " +
+			Usage: "Add a routing rule (can be repeated): " + ingressRuleSpecFormat + ". " +
 				"Omit the instance to target the positional <instance>. When any --rule is given, the single-rule " +
-				"shorthand flags (--hostname/--port/--host-port/--tls/--redirect-http) must not be used.",
+				"shorthand flags (--hostname/--port/--host-port/--tls/--redirect-http/--request-header-auth-header/" +
+				"--request-header-auth-value) must not be used.",
 		},
 		&cli.StringFlag{
 			Name:  "name",
@@ -120,7 +129,7 @@ func handleIngressCreate(ctx context.Context, cmd *cli.Command) error {
 	var rules []hypeman.IngressRuleParam
 	var primaryHostname string
 	if len(ruleSpecs) > 0 {
-		for _, flag := range []string{"hostname", "port", "host-port", "tls", "redirect-http"} {
+		for _, flag := range []string{"hostname", "port", "host-port", "tls", "redirect-http", "request-header-auth-header", "request-header-auth-value"} {
 			if cmd.IsSet(flag) {
 				return fmt.Errorf("--rule cannot be combined with --%s; provide all rules via --rule", flag)
 			}
@@ -141,20 +150,26 @@ func handleIngressCreate(ctx context.Context, cmd *cli.Command) error {
 		if !cmd.IsSet("port") {
 			return fmt.Errorf("--port is required (or use --rule)")
 		}
-		rules = []hypeman.IngressRuleParam{
-			{
-				Match: hypeman.IngressMatchParam{
-					Hostname: hostname,
-					Port:     hypeman.Int(int64(cmd.Int("host-port"))),
-				},
-				Target: hypeman.IngressTargetParam{
-					Instance: instance,
-					Port:     int64(cmd.Int("port")),
-				},
-				Tls:          hypeman.Bool(cmd.Bool("tls")),
-				RedirectHTTP: hypeman.Bool(cmd.Bool("redirect-http")),
+		rule := hypeman.IngressRuleParam{
+			Match: hypeman.IngressMatchParam{
+				Hostname: hostname,
+				Port:     hypeman.Int(int64(cmd.Int("host-port"))),
 			},
+			Target: hypeman.IngressTargetParam{
+				Instance: instance,
+				Port:     int64(cmd.Int("port")),
+			},
+			Tls:          hypeman.Bool(cmd.Bool("tls")),
+			RedirectHTTP: hypeman.Bool(cmd.Bool("redirect-http")),
 		}
+		auth, err := requestHeaderAuthFromFlags(cmd.String("request-header-auth-header"), cmd.String("request-header-auth-value"))
+		if err != nil {
+			return err
+		}
+		if auth != nil {
+			rule.RequestHeaderAuth = *auth
+		}
+		rules = []hypeman.IngressRuleParam{rule}
 		primaryHostname = hostname
 	}
 
@@ -328,13 +343,17 @@ func handleIngressDelete(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-// parseIngressRuleSpec parses a routing rule specification string.
-// Format: hostname[:host-port]=instance:port[,tls][,redirect-http]
-// When the instance is omitted (e.g. "host:80=:8080"), fallbackInstance is used.
+// ingressRuleSpecFormat documents the --rule grammar shared by the flag usage
+// text and the parser error message.
+const ingressRuleSpecFormat = "hostname[:host-port]=instance:port[,tls][,redirect-http][,request-header-auth=HEADER:VALUE]"
+
+// parseIngressRuleSpec parses a routing rule specification string in the
+// ingressRuleSpecFormat grammar. When the instance is omitted (e.g.
+// "host:80=:8080"), fallbackInstance is used.
 func parseIngressRuleSpec(spec, fallbackInstance string) (hypeman.IngressRuleParam, error) {
 	matchPart, targetPart, ok := strings.Cut(spec, "=")
 	if !ok {
-		return hypeman.IngressRuleParam{}, fmt.Errorf("expected format hostname[:host-port]=instance:port[,tls][,redirect-http]")
+		return hypeman.IngressRuleParam{}, fmt.Errorf("expected format %s", ingressRuleSpecFormat)
 	}
 
 	hostname, hostPortStr, hasHostPort := strings.Cut(matchPart, ":")
@@ -376,19 +395,46 @@ func parseIngressRuleSpec(spec, fallbackInstance string) (hypeman.IngressRulePar
 	}
 
 	for _, opt := range targetSegments[1:] {
-		switch opt {
-		case "tls":
-			rule.Tls = hypeman.Bool(true)
-		case "redirect-http":
-			rule.RedirectHTTP = hypeman.Bool(true)
-		case "":
+		switch {
+		case opt == "":
 			continue
+		case opt == "tls":
+			rule.Tls = hypeman.Bool(true)
+		case opt == "redirect-http":
+			rule.RedirectHTTP = hypeman.Bool(true)
+		case strings.HasPrefix(opt, requestHeaderAuthOption+"="):
+			header, value, _ := strings.Cut(strings.TrimPrefix(opt, requestHeaderAuthOption+"="), ":")
+			auth, err := requestHeaderAuthFromFlags(header, value)
+			if err != nil {
+				return hypeman.IngressRuleParam{}, err
+			}
+			if auth == nil {
+				return hypeman.IngressRuleParam{}, fmt.Errorf("%s must be HEADER:VALUE", requestHeaderAuthOption)
+			}
+			rule.RequestHeaderAuth = *auth
 		default:
 			return hypeman.IngressRuleParam{}, fmt.Errorf("unknown option %q", opt)
 		}
 	}
 
 	return rule, nil
+}
+
+const requestHeaderAuthOption = "request-header-auth"
+
+// requestHeaderAuthFromFlags builds the request header auth param, returning nil
+// when neither half was supplied. Both halves are required by the API.
+func requestHeaderAuthFromFlags(header, value string) (*hypeman.IngressRuleRequestHeaderAuthParam, error) {
+	if header == "" && value == "" {
+		return nil, nil
+	}
+	if header == "" {
+		return nil, fmt.Errorf("request header auth requires a header name")
+	}
+	if value == "" {
+		return nil, fmt.Errorf("request header auth requires a value for header %q", header)
+	}
+	return &hypeman.IngressRuleRequestHeaderAuthParam{Header: header, Value: value}, nil
 }
 
 // generateIngressName generates an ingress name from hostname
