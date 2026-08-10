@@ -5,7 +5,31 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
+
+func TestRedactIngressAuthValues(t *testing.T) {
+	t.Run("redacts get response", func(t *testing.T) {
+		raw := `{"id":"ing-1","rules":[{"request_header_auth":{"header":"X-Origin-Verification","value":"secret-value"}},{"target":{"port":8080}}]}`
+		redacted := redactIngressAuthValues(raw)
+
+		assert.Equal(t, "[hidden]", gjson.Get(redacted, "rules.0.request_header_auth.value").String())
+		assert.Equal(t, "X-Origin-Verification", gjson.Get(redacted, "rules.0.request_header_auth.header").String())
+	})
+
+	t.Run("redacts list response", func(t *testing.T) {
+		raw := `[{"id":"ing-1","rules":[{"request_header_auth":{"value":"first-secret"}}]},{"id":"ing-2","rules":[{"request_header_auth":{"value":"second-secret"}}]}]`
+		redacted := redactIngressAuthValues(raw)
+
+		assert.Equal(t, "[hidden]", gjson.Get(redacted, "0.rules.0.request_header_auth.value").String())
+		assert.Equal(t, "[hidden]", gjson.Get(redacted, "1.rules.0.request_header_auth.value").String())
+	})
+
+	t.Run("preserves response without authorization values", func(t *testing.T) {
+		raw := `{"id":"ing-1","rules":[{"target":{"port":8080}}]}`
+		assert.Equal(t, raw, redactIngressAuthValues(raw))
+	})
+}
 
 func TestParseIngressRuleSpec(t *testing.T) {
 	t.Run("full spec with host port, tls, and redirect", func(t *testing.T) {

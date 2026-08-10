@@ -10,6 +10,7 @@ import (
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"github.com/urfave/cli/v3"
 )
 
@@ -86,15 +87,25 @@ var ingressListCmd = cli.Command{
 			Name:  "tag",
 			Usage: "Filter by tag key-value pair (KEY=VALUE, can be repeated)",
 		},
+		&cli.BoolFlag{
+			Name:  "show-secrets",
+			Usage: "Show request header authorization values in structured output (default: hidden)",
+		},
 	},
 	Action:          handleIngressList,
 	HideHelpCommand: true,
 }
 
 var ingressGetCmd = cli.Command{
-	Name:            "get",
-	Usage:           "Get ingress details",
-	ArgsUsage:       "<id>",
+	Name:      "get",
+	Usage:     "Get ingress details",
+	ArgsUsage: "<id>",
+	Flags: []cli.Flag{
+		&cli.BoolFlag{
+			Name:  "show-secrets",
+			Usage: "Show request header authorization values (default: hidden)",
+		},
+	},
 	Action:          handleIngressGet,
 	HideHelpCommand: true,
 }
@@ -220,6 +231,9 @@ func handleIngressList(ctx context.Context, cmd *cli.Command) error {
 		if err != nil {
 			return err
 		}
+		if !cmd.Bool("show-secrets") {
+			res = []byte(redactIngressAuthValues(string(res)))
+		}
 		obj := gjson.ParseBytes(res)
 		return ShowJSON(os.Stdout, "ingress list", obj, format, transform)
 	}
@@ -296,12 +310,56 @@ func handleIngressGet(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
+	if !cmd.Bool("show-secrets") {
+		res = []byte(redactIngressAuthValues(string(res)))
+	}
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
 
 	obj := gjson.ParseBytes(res)
 	return ShowJSON(os.Stdout, "ingress get", obj, format, transform)
+}
+
+func redactIngressAuthValues(raw string) string {
+	root := gjson.Parse(raw)
+	out := raw
+	redactRules := func(prefix string, rules gjson.Result) bool {
+		ruleIndex := 0
+		ok := true
+		rules.ForEach(func(_, rule gjson.Result) bool {
+			if rule.Get("request_header_auth.value").Exists() {
+				path := fmt.Sprintf("%s.%d.request_header_auth.value", prefix, ruleIndex)
+				updated, err := sjson.Set(out, path, "[hidden]")
+				if err != nil {
+					ok = false
+					return false
+				}
+				out = updated
+			}
+			ruleIndex++
+			return true
+		})
+		return ok
+	}
+
+	if root.IsArray() {
+		ingressIndex := 0
+		ok := true
+		root.ForEach(func(_, ingress gjson.Result) bool {
+			ok = redactRules(fmt.Sprintf("%d.rules", ingressIndex), ingress.Get("rules"))
+			ingressIndex++
+			return ok
+		})
+		if !ok {
+			return raw
+		}
+		return out
+	}
+	if !redactRules("rules", root.Get("rules")) {
+		return raw
+	}
+	return out
 }
 
 func handleIngressDelete(ctx context.Context, cmd *cli.Command) error {
