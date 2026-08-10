@@ -61,6 +61,11 @@ func TestFormatHypervisor(t *testing.T) {
 			expected:   "qemu",
 		},
 		{
+			name:       "qemu-microvm",
+			hypervisor: hypeman.InstanceHypervisorQemuMicrovm,
+			expected:   "microvm",
+		},
+		{
 			name:       "firecracker",
 			hypervisor: hypeman.InstanceHypervisorFirecracker,
 			expected:   "fc",

@@ -135,6 +135,8 @@ func formatHypervisor(hv hypeman.InstanceHypervisor) string {
 		return "ch"
 	case hypeman.InstanceHypervisorQemu:
 		return "qemu"
+	case hypeman.InstanceHypervisorQemuMicrovm:
+		return "microvm"
 	case hypeman.InstanceHypervisorFirecracker:
 		return "fc"
 	case hypeman.InstanceHypervisorVz:

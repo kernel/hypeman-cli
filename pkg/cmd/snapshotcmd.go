@@ -71,7 +71,7 @@ var snapshotRestoreCmd = cli.Command{
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:  "target-hypervisor",
-			Usage: `Optional hypervisor override: "cloud-hypervisor", "firecracker", "qemu", or "vz"`,
+			Usage: `Optional hypervisor override: "cloud-hypervisor", "firecracker", "qemu", "qemu-microvm", or "vz"`,
 		},
 		&cli.StringFlag{
 			Name:  "target-state",
@@ -136,7 +136,7 @@ var snapshotForkCmd = cli.Command{
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:  "target-hypervisor",
-			Usage: `Optional hypervisor override: "cloud-hypervisor", "firecracker", "qemu", or "vz"`,
+			Usage: `Optional hypervisor override: "cloud-hypervisor", "firecracker", "qemu", "qemu-microvm", or "vz"`,
 		},
 		&cli.StringFlag{
 			Name:  "target-state",
@@ -509,10 +509,12 @@ func parseSnapshotTargetHypervisor(raw string) (hypeman.InstanceSnapshotRestoreP
 		return hypeman.InstanceSnapshotRestoreParamsTargetHypervisorFirecracker, nil
 	case "qemu":
 		return hypeman.InstanceSnapshotRestoreParamsTargetHypervisorQemu, nil
+	case "qemu-microvm", "microvm":
+		return hypeman.InstanceSnapshotRestoreParamsTargetHypervisorQemuMicrovm, nil
 	case "vz":
 		return hypeman.InstanceSnapshotRestoreParamsTargetHypervisorVz, nil
 	default:
-		return "", fmt.Errorf("invalid target hypervisor: %s (must be cloud-hypervisor, firecracker, qemu, or vz)", raw)
+		return "", fmt.Errorf("invalid target hypervisor: %s (must be cloud-hypervisor, firecracker, qemu, qemu-microvm, or vz)", raw)
 	}
 }
 
@@ -537,9 +539,11 @@ func parseSnapshotForkTargetHypervisor(raw string) (hypeman.SnapshotForkParamsTa
 		return hypeman.SnapshotForkParamsTargetHypervisorFirecracker, nil
 	case "qemu":
 		return hypeman.SnapshotForkParamsTargetHypervisorQemu, nil
+	case "qemu-microvm", "microvm":
+		return hypeman.SnapshotForkParamsTargetHypervisorQemuMicrovm, nil
 	case "vz":
 		return hypeman.SnapshotForkParamsTargetHypervisorVz, nil
 	default:
-		return "", fmt.Errorf("invalid target hypervisor: %s (must be cloud-hypervisor, firecracker, qemu, or vz)", raw)
+		return "", fmt.Errorf("invalid target hypervisor: %s (must be cloud-hypervisor, firecracker, qemu, qemu-microvm, or vz)", raw)
 	}
 }
