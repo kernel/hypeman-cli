@@ -42,6 +42,9 @@ Examples:
   # Run with QEMU hypervisor
   hypeman run --hypervisor qemu myimage:latest
 
+  # Run on QEMU's minimal microvm board
+  hypeman run --hypervisor qemu-microvm myimage:latest
+
   # Run with bandwidth limits
   hypeman run --bandwidth-down 1Gbps --bandwidth-up 500Mbps myimage:latest`,
 	Flags: []cli.Flag{
@@ -99,7 +102,7 @@ Examples:
 		// Hypervisor flag
 		&cli.StringFlag{
 			Name:  "hypervisor",
-			Usage: `Hypervisor to use: "cloud-hypervisor", "firecracker", "qemu", or "vz"`,
+			Usage: `Hypervisor backend to use: "cloud-hypervisor", "firecracker", "qemu", "qemu-microvm", or "vz". qemu-microvm uses QEMU's minimal Linux amd64 board and does not support PCI devices, hotplug memory, or more than eight virtio-mmio devices`,
 		},
 		// Resource limit flags
 		&cli.StringFlag{
@@ -338,10 +341,12 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 			params.Hypervisor = hypeman.InstanceNewParamsHypervisorFirecracker
 		case "qemu":
 			params.Hypervisor = hypeman.InstanceNewParamsHypervisorQemu
+		case "qemu-microvm", "microvm":
+			params.Hypervisor = hypeman.InstanceNewParamsHypervisorQemuMicrovm
 		case "vz":
 			params.Hypervisor = hypeman.InstanceNewParamsHypervisorVz
 		default:
-			return fmt.Errorf("invalid hypervisor: %s (must be 'cloud-hypervisor', 'firecracker', 'qemu', or 'vz')", hypervisor)
+			return fmt.Errorf("invalid hypervisor: %s (must be 'cloud-hypervisor', 'firecracker', 'qemu', 'qemu-microvm', or 'vz')", hypervisor)
 		}
 	}
 

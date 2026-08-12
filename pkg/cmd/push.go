@@ -16,9 +16,29 @@ import (
 )
 
 var pushCmd = cli.Command{
-	Name:            "push",
-	Usage:           "Push a local Docker image to hypeman",
-	ArgsUsage:       "<image> [target-name]",
+	Name:      "push",
+	Aliases:   []string{"pushes"},
+	Usage:     "Push a local Docker image to hypeman",
+	ArgsUsage: "<image> [target-name]",
+	Description: `Push a local Docker image into the hypeman image cache.
+
+Subcommands manage outbound pushes, which export a cached hypeman image to a
+remote registry (e.g. AWS ECR, Docker Hub):
+  hypeman push create <image> <target>  Push a hypeman image to a remote registry
+  hypeman push list                     List outbound image push jobs
+  hypeman push get <id>                 Get push details
+
+Examples:
+  # Push a local Docker image into hypeman
+  hypeman push nginx:latest
+
+  # Export a cached hypeman image to a remote registry
+  hypeman push create nginx:latest registry.example.com/nginx:latest`,
+	Commands: []*cli.Command{
+		&pushCreateCmd,
+		&pushListCmd,
+		&pushGetCmd,
+	},
 	Action:          handlePush,
 	HideHelpCommand: true,
 }
