@@ -21,42 +21,61 @@ import (
 var pushCmd = cli.Command{
 	Name:      "push",
 	Aliases:   []string{"pushes"},
-	Usage:     "Push an image to hypeman",
-	ArgsUsage: "NAME[:TAG] [TARGET]",
-	Description: `Push an image from the local Docker daemon into the hypeman image cache.
+	Usage:     "Push an image to a registry",
+	ArgsUsage: "SOURCE [TARGET]",
+	Description: `Push an image from Hypeman to a remote registry.
 
-The command follows Docker's push flow: the source image is read from the
-local daemon, uploaded to hypeman, and reported with its manifest digest. If
-TARGET is omitted, the source name and tag are used.
+The source image must already exist in Hypeman. TARGET is the remote registry
+reference, matching Docker's push syntax as closely as possible.
 
-Subcommands manage outbound pushes, which export a cached hypeman image to a
-remote registry (e.g. AWS ECR, Docker Hub):
-  hypeman push create <image> <target>  Push a hypeman image to a remote registry
-  hypeman push list                     List outbound image push jobs
-  hypeman push get <id>                 Get push details
+Local Docker-daemon uploads remain available explicitly with "push local":
+  hypeman push local IMAGE [TARGET]
+
+Push jobs can be inspected while they run:
+  hypeman push ls
+  hypeman push inspect <id>
 
 Examples:
-  # Push the local nginx:latest image
-  hypeman push nginx:latest
+  # Push a cached image to ECR
+  hypeman push alpine:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
 
-  # Push using a different repository or tag
-  hypeman push nginx:latest myapp/nginx:v1
+  # Push with credentials read from stdin
+  echo "$ECR_PASSWORD" | hypeman push alpine:latest registry.example.com/app:v1 \
+    --username AWS --password-stdin
 
-  # Export a cached hypeman image to a remote registry
-  hypeman push create nginx:latest registry.example.com/nginx:latest`,
-	Commands: []*cli.Command{
-		&pushCreateCmd,
-		&pushListCmd,
-		&pushGetCmd,
-	},
+  # Upload a local Docker image into Hypeman
+  hypeman push local nginx:latest`,
+	Flags:           pushRemoteFlags(),
+	Commands:        []*cli.Command{&pushLocalCmd, &pushCreateCmd, &pushListCmd, &pushGetCmd},
 	Action:          handlePush,
+	HideHelpCommand: true,
+}
+
+var pushLocalCmd = cli.Command{
+	Name:            "local",
+	Usage:           "Upload a local Docker image to Hypeman",
+	ArgsUsage:       "IMAGE [TARGET]",
+	Action:          handleLocalPush,
 	HideHelpCommand: true,
 }
 
 func handlePush(ctx context.Context, cmd *cli.Command) error {
 	args := cmd.Args().Slice()
-	if len(args) < 1 {
-		return fmt.Errorf("image reference required\nUsage: hypeman push <image>")
+	switch len(args) {
+	case 1:
+		// Keep the old one-argument form working for existing scripts.
+		return handleLocalPush(ctx, cmd)
+	case 2:
+		return runRemotePush(ctx, cmd, args[0], args[1])
+	default:
+		return fmt.Errorf("source image and target required\nUsage: hypeman push <source> <target>")
+	}
+}
+
+func handleLocalPush(ctx context.Context, cmd *cli.Command) error {
+	args := cmd.Args().Slice()
+	if len(args) < 1 || len(args) > 2 {
+		return fmt.Errorf("image reference required\nUsage: hypeman push local <image> [target]")
 	}
 
 	sourceImage := args[0]

@@ -13,13 +13,20 @@ func TestPushCommandStructure(t *testing.T) {
 		subcommandNames = append(subcommandNames, sub.Name)
 	}
 
+	assert.Contains(t, subcommandNames, "local")
 	assert.Contains(t, subcommandNames, "create")
 	assert.Contains(t, subcommandNames, "list")
 	assert.Contains(t, subcommandNames, "get")
+	assert.Contains(t, pushListCmd.Aliases, "ls")
+	assert.Contains(t, pushGetCmd.Aliases, "inspect")
 
-	// The parent action still pushes a local Docker image into hypeman, so it
-	// must stay reachable alongside the outbound push subcommands.
+	// The parent action remains reachable for the legacy local-upload form and
+	// the new direct remote-push form.
 	assert.NotNil(t, pushCmd.Action)
+}
+
+func TestPushRepository(t *testing.T) {
+	assert.Equal(t, "registry.example.com/app", pushRepository("registry.example.com/app:v1"))
 }
 
 func TestBuildPushNewParams(t *testing.T) {

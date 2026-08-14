@@ -3,30 +3,20 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"strings"
+	"time"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
 	"github.com/tidwall/gjson"
 	"github.com/urfave/cli/v3"
 )
 
-var pushCreateCmd = cli.Command{
-	Name:      "create",
-	Usage:     "Push a hypeman image to a remote registry",
-	ArgsUsage: "<image> <target>",
-	Description: `Create a push job that exports a hypeman image to a remote registry.
-
-Only images in the ready state can be pushed. The push runs asynchronously;
-use "hypeman push get <id>" to poll its progress.
-
-Examples:
-  # Push a cached image to ECR using the server's registry credentials
-  hypeman push create alpine:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
-
-  # Push with credentials borrowed for this push only
-  hypeman push create alpine:latest registry.example.com/myapp:v1 --username alice --password s3cret`,
-	Flags: []cli.Flag{
+func pushRemoteFlags() []cli.Flag {
+	return []cli.Flag{
 		&cli.BoolFlag{
 			Name:  "insecure",
 			Usage: "Allow pushing to plain-HTTP registries",
@@ -39,18 +29,40 @@ Examples:
 			Name:  "password",
 			Usage: "Registry password or access token",
 		},
+		&cli.BoolFlag{
+			Name:  "password-stdin",
+			Usage: "Read the registry password from stdin",
+		},
 		&cli.StringFlag{
 			Name:  "registry-token",
 			Usage: "Bearer token for an Authorization header",
 		},
-	},
+		&cli.BoolFlag{
+			Name:    "detach",
+			Aliases: []string{"d"},
+			Usage:   "Return after queueing the push",
+		},
+	}
+}
+
+var pushCreateCmd = cli.Command{
+	Name:      "create",
+	Aliases:   []string{"remote"},
+	Usage:     "Create a remote push job (deprecated; use push SOURCE TARGET)",
+	ArgsUsage: "<image> <target>",
+	Flags:     pushRemoteFlags(),
+	Description: `Create a remote push job without waiting for it to finish.
+
+Use "hypeman push SOURCE TARGET" for the Docker-like flow. This command is
+kept as a compatibility alias for existing scripts.`,
 	Action:          handlePushCreate,
 	HideHelpCommand: true,
 }
 
 var pushListCmd = cli.Command{
-	Name:  "list",
-	Usage: "List outbound image push jobs",
+	Name:    "list",
+	Aliases: []string{"ls"},
+	Usage:   "List outbound image push jobs",
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
 			Name:    "quiet",
@@ -64,6 +76,7 @@ var pushListCmd = cli.Command{
 
 var pushGetCmd = cli.Command{
 	Name:            "get",
+	Aliases:         []string{"inspect"},
 	Usage:           "Get push details",
 	ArgsUsage:       "<id>",
 	Action:          handlePushGet,
@@ -72,16 +85,24 @@ var pushGetCmd = cli.Command{
 
 func handlePushCreate(ctx context.Context, cmd *cli.Command) error {
 	args := cmd.Args().Slice()
-	if len(args) < 2 {
+	if len(args) != 2 {
 		return fmt.Errorf("image and target required\nUsage: hypeman push create <image> <target>")
+	}
+	return runRemotePush(ctx, cmd, args[0], args[1])
+}
+
+func runRemotePush(ctx context.Context, cmd *cli.Command, image, target string) error {
+	password, err := pushPassword(cmd)
+	if err != nil {
+		return err
 	}
 
 	params := buildPushNewParams(
-		args[0],
-		args[1],
+		image,
+		target,
 		cmd.Bool("insecure"),
 		cmd.String("username"),
-		cmd.String("password"),
+		password,
 		cmd.String("registry-token"),
 	)
 
@@ -94,7 +115,6 @@ func handlePushCreate(ctx context.Context, cmd *cli.Command) error {
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
-
 	if format != "auto" {
 		var res []byte
 		opts = append(opts, option.WithResponseBodyInto(&res))
@@ -102,8 +122,7 @@ func handlePushCreate(ctx context.Context, cmd *cli.Command) error {
 		if err != nil {
 			return err
 		}
-		obj := gjson.ParseBytes(res)
-		return ShowJSON(os.Stdout, "push create", obj, format, transform)
+		return ShowJSON(os.Stdout, "push", gjson.ParseBytes(res), format, transform)
 	}
 
 	push, err := client.Pushes.New(ctx, params, opts...)
@@ -111,9 +130,77 @@ func handlePushCreate(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, "Pushing %s to %s...\n", push.Image, push.Target)
-	fmt.Println(push.ID)
-	return nil
+	if cmd.Bool("detach") || cmd.Name == "create" || cmd.Name == "remote" {
+		fmt.Fprintf(os.Stderr, "push queued: %s\n", push.ID)
+		fmt.Println(push.ID)
+		return nil
+	}
+
+	return waitForPush(ctx, &client, push, opts)
+}
+
+func pushPassword(cmd *cli.Command) (string, error) {
+	password := cmd.String("password")
+	if !cmd.Bool("password-stdin") {
+		return password, nil
+	}
+	if password != "" {
+		return "", fmt.Errorf("--password and --password-stdin cannot be used together")
+	}
+
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return "", fmt.Errorf("read registry password from stdin: %w", err)
+	}
+	return strings.TrimRight(string(data), "\r\n"), nil
+}
+
+func waitForPush(ctx context.Context, client *hypeman.Client, push *hypeman.Push, opts []option.RequestOption) error {
+	fmt.Fprintf(os.Stderr, "The push refers to repository [%s]\n", pushRepository(push.Target))
+	fmt.Fprintln(os.Stderr, "queued")
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	lastStatus := push.Status
+	var lastBytes int64
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			current, err := client.Pushes.Get(ctx, push.ID, opts...)
+			if err != nil {
+				return fmt.Errorf("check push %s: %w", push.ID, err)
+			}
+			if current.Status != lastStatus {
+				fmt.Fprintln(os.Stderr, string(current.Status))
+				lastStatus = current.Status
+			}
+			if current.Status == hypeman.PushStatusPushing && current.Bytes > lastBytes {
+				fmt.Fprintf(os.Stderr, "pushing %s (%d layers)\n", formatBytes(current.Bytes), current.Layers)
+				lastBytes = current.Bytes
+			}
+
+			switch current.Status {
+			case hypeman.PushStatusPushed:
+				fmt.Fprintf(os.Stderr, "digest: %s\n", current.Digest)
+				return nil
+			case hypeman.PushStatusFailed:
+				if current.Error != "" {
+					return fmt.Errorf("push failed: %s", current.Error)
+				}
+				return fmt.Errorf("push failed")
+			}
+		}
+	}
+}
+
+func pushRepository(target string) string {
+	ref, err := name.ParseReference(target)
+	if err != nil {
+		return target
+	}
+	return ref.Context().Name()
 }
 
 // buildPushNewParams assembles the outbound push request. Credentials are only
