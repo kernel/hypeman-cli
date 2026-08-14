@@ -13,6 +13,7 @@ import (
 	"github.com/kernel/hypeman-go/option"
 	"github.com/tidwall/gjson"
 	"github.com/urfave/cli/v3"
+	"golang.org/x/term"
 )
 
 func pushRemoteFlags() []cli.Flag {
@@ -51,7 +52,8 @@ var pushCreateCmd = cli.Command{
 	Usage:     "Create a remote push job (deprecated; use push SOURCE TARGET)",
 	ArgsUsage: "<image> <target>",
 	Flags:     pushRemoteFlags(),
-	Description: `Create a remote push job without waiting for it to finish.
+	Description: `Create a remote push job. The command waits by default; use --detach
+when existing scripts need the push ID immediately.
 
 Use "hypeman push SOURCE TARGET" for the Docker-like flow. This command is
 kept as a compatibility alias for existing scripts.`,
@@ -92,6 +94,10 @@ func handlePushCreate(ctx context.Context, cmd *cli.Command) error {
 }
 
 func runRemotePush(ctx context.Context, cmd *cli.Command, image, target string) error {
+	if err := validateRemotePushReferences(image, target); err != nil {
+		return err
+	}
+
 	password, err := pushPassword(cmd)
 	if err != nil {
 		return err
@@ -115,28 +121,54 @@ func runRemotePush(ctx context.Context, cmd *cli.Command, image, target string) 
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
+	var createResponse []byte
+	createOpts := opts
 	if format != "auto" {
-		var res []byte
-		opts = append(opts, option.WithResponseBodyInto(&res))
-		_, err := client.Pushes.New(ctx, params, opts...)
-		if err != nil {
-			return err
-		}
-		return ShowJSON(os.Stdout, "push", gjson.ParseBytes(res), format, transform)
+		createOpts = append(append([]option.RequestOption(nil), opts...), option.WithResponseBodyInto(&createResponse))
 	}
 
-	push, err := client.Pushes.New(ctx, params, opts...)
+	push, err := client.Pushes.New(ctx, params, createOpts...)
 	if err != nil {
 		return err
 	}
 
-	if cmd.Bool("detach") || cmd.Name == "create" || cmd.Name == "remote" {
+	if cmd.Bool("detach") {
+		if format != "auto" {
+			return ShowJSON(os.Stdout, "push", gjson.ParseBytes(createResponse), format, transform)
+		}
 		fmt.Fprintf(os.Stderr, "push queued: %s\n", push.ID)
 		fmt.Println(push.ID)
 		return nil
 	}
 
-	return waitForPush(ctx, &client, push, opts)
+	var finalResponse []byte
+	final, err := waitForPush(ctx, &client, push, opts, format != "auto", &finalResponse)
+	if err != nil {
+		return err
+	}
+	if format != "auto" {
+		if len(finalResponse) == 0 {
+			finalResponse = []byte(final.RawJSON())
+		}
+		return ShowJSON(os.Stdout, "push", gjson.ParseBytes(finalResponse), format, transform)
+	}
+	return nil
+}
+
+func validateRemotePushReferences(image, target string) error {
+	if _, err := name.ParseReference(image); err != nil {
+		return fmt.Errorf("invalid source image %q: %w", image, err)
+	}
+	if _, err := name.ParseReference(target); err != nil {
+		return fmt.Errorf("invalid target %q: %w", target, err)
+	}
+	lastSlash := strings.LastIndex(target, "/")
+	lastColon := strings.LastIndex(target, ":")
+	lastAt := strings.LastIndex(target, "@")
+	if lastAt > lastSlash || lastColon <= lastSlash {
+		return fmt.Errorf("target %q must include an explicit tag", target)
+	}
+	return nil
 }
 
 func pushPassword(cmd *cli.Command) (string, error) {
@@ -155,43 +187,96 @@ func pushPassword(cmd *cli.Command) (string, error) {
 	return strings.TrimRight(string(data), "\r\n"), nil
 }
 
-func waitForPush(ctx context.Context, client *hypeman.Client, push *hypeman.Push, opts []option.RequestOption) error {
-	fmt.Fprintf(os.Stderr, "The push refers to repository [%s]\n", pushRepository(push.Target))
-	fmt.Fprintln(os.Stderr, "queued")
+func waitForPush(ctx context.Context, client *hypeman.Client, push *hypeman.Push, opts []option.RequestOption, quiet bool, finalResponse *[]byte) (*hypeman.Push, error) {
+	var renderer *pushStatusRenderer
+	if !quiet {
+		fmt.Fprintf(os.Stderr, "The push refers to repository [%s]\n", pushRepository(push.Target))
+		renderer = &pushStatusRenderer{
+			output:      os.Stderr,
+			interactive: term.IsTerminal(int(os.Stderr.Fd())),
+		}
+	}
 
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	lastStatus := push.Status
+	current := push
 	var lastBytes int64
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			current, err := client.Pushes.Get(ctx, push.ID, opts...)
-			if err != nil {
-				return fmt.Errorf("check push %s: %w", push.ID, err)
-			}
-			if current.Status != lastStatus {
-				fmt.Fprintln(os.Stderr, string(current.Status))
-				lastStatus = current.Status
-			}
-			if current.Status == hypeman.PushStatusPushing && current.Bytes > lastBytes {
-				fmt.Fprintf(os.Stderr, "pushing %s (%d layers)\n", formatBytes(current.Bytes), current.Layers)
-				lastBytes = current.Bytes
-			}
-
+		if renderer != nil {
 			switch current.Status {
-			case hypeman.PushStatusPushed:
-				fmt.Fprintf(os.Stderr, "digest: %s\n", current.Digest)
-				return nil
-			case hypeman.PushStatusFailed:
-				if current.Error != "" {
-					return fmt.Errorf("push failed: %s", current.Error)
+			case hypeman.PushStatusQueued:
+				renderer.update(fmt.Sprintf("queued · %s", current.Target))
+			case hypeman.PushStatusPushing:
+				if current.Bytes > lastBytes {
+					lastBytes = current.Bytes
 				}
-				return fmt.Errorf("push failed")
+				renderer.update(fmt.Sprintf("pushing %s · %d layers · %s", formatBytes(lastBytes), current.Layers, current.Target))
+			case hypeman.PushStatusPushed:
+				renderer.update(fmt.Sprintf("pushed · digest: %s", current.Digest))
+			case hypeman.PushStatusFailed:
+				message := current.Error
+				if message == "" {
+					message = "unknown error"
+				}
+				renderer.update("failed · " + message)
 			}
 		}
+
+		switch current.Status {
+		case hypeman.PushStatusPushed:
+			if renderer != nil {
+				renderer.finish()
+			}
+			return current, nil
+		case hypeman.PushStatusFailed:
+			if renderer != nil {
+				renderer.finish()
+			}
+			if current.Error != "" {
+				return nil, fmt.Errorf("push %s failed: %s", push.ID, current.Error)
+			}
+			return nil, fmt.Errorf("push %s failed", push.ID)
+		}
+
+		ticker := time.NewTimer(time.Second)
+		select {
+		case <-ctx.Done():
+			ticker.Stop()
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
+
+		getOpts := opts
+		if finalResponse != nil {
+			getOpts = append(append([]option.RequestOption(nil), opts...), option.WithResponseBodyInto(finalResponse))
+		}
+		var err error
+		current, err = client.Pushes.Get(ctx, push.ID, getOpts...)
+		if err != nil {
+			return nil, fmt.Errorf("check push %s: %w", push.ID, err)
+		}
+	}
+}
+
+type pushStatusRenderer struct {
+	output      io.Writer
+	interactive bool
+	last        string
+}
+
+func (r *pushStatusRenderer) update(message string) {
+	if message == r.last {
+		return
+	}
+	r.last = message
+	if r.interactive {
+		fmt.Fprintf(r.output, "\r\033[K%s", message)
+		return
+	}
+	fmt.Fprintln(r.output, message)
+}
+
+func (r *pushStatusRenderer) finish() {
+	if r.interactive && r.last != "" {
+		fmt.Fprintln(r.output)
 	}
 }
 

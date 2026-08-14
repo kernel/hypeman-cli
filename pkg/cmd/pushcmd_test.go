@@ -29,6 +29,13 @@ func TestPushRepository(t *testing.T) {
 	assert.Equal(t, "registry.example.com/app", pushRepository("registry.example.com/app:v1"))
 }
 
+func TestValidateRemotePushReferences(t *testing.T) {
+	assert.NoError(t, validateRemotePushReferences("alpine:latest", "registry.example.com/app:v1"))
+	assert.ErrorContains(t, validateRemotePushReferences("alpine:latest", "registry.example.com/app"), "explicit tag")
+	assert.ErrorContains(t, validateRemotePushReferences("not valid", "registry.example.com/app:v1"), "invalid source image")
+	assert.Error(t, validateRemotePushReferences("alpine:latest", "registry.example.com/app@sha256:abc"))
+}
+
 func TestBuildPushNewParams(t *testing.T) {
 	params := buildPushNewParams("alpine:latest", "registry.example.com/alpine:v1", false, "", "", "")
 

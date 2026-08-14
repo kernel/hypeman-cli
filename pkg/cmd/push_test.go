@@ -31,3 +31,26 @@ func TestRenderPushProgressNonInteractive(t *testing.T) {
 
 	assert.Empty(t, output.String())
 }
+
+func TestPushStatusRenderer(t *testing.T) {
+	var output bytes.Buffer
+	renderer := &pushStatusRenderer{output: &output, interactive: true}
+
+	renderer.update("queued")
+	renderer.update("queued")
+	renderer.update("pushing 1.0 MB")
+	renderer.finish()
+
+	assert.Equal(t, "\r\033[Kqueued\r\033[Kpushing 1.0 MB\n", output.String())
+}
+
+func TestPushStatusRendererNonInteractive(t *testing.T) {
+	var output bytes.Buffer
+	renderer := &pushStatusRenderer{output: &output}
+
+	renderer.update("queued")
+	renderer.update("pushing 1.0 MB")
+	renderer.finish()
+
+	assert.Equal(t, "queued\npushing 1.0 MB\n", output.String())
+}

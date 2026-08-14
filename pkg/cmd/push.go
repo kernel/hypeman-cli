@@ -99,21 +99,14 @@ func handleLocalPush(ctx context.Context, cmd *cli.Command) error {
 
 	registryHost := parsedURL.Host
 
-	fmt.Fprintf(os.Stderr, "Loading image %s from Docker...\n", sourceImage)
-
 	srcRef, err := name.ParseReference(sourceImage)
 	if err != nil {
 		return fmt.Errorf("invalid source image: %w", err)
 	}
 
-	img, err := daemon.Image(srcRef)
-	if err != nil {
-		return fmt.Errorf("load image: %w", err)
-	}
-
-	// Build the target reference. The server computes the image digest from
-	// the manifest, while the tag keeps the image addressable with Docker-like
-	// image names after the push.
+	// Build and validate the target before opening the Docker daemon. The
+	// server computes the image digest from the manifest, while the tag keeps
+	// the image addressable with Docker-like image names after the push.
 	targetRef := registryHost + "/" + strings.TrimPrefix(targetName, "/")
 	parseOptions := []name.Option(nil)
 	if parsedURL.Scheme == "http" {
@@ -122,6 +115,12 @@ func handleLocalPush(ctx context.Context, cmd *cli.Command) error {
 	dstRef, err := name.ParseReference(targetRef, parseOptions...)
 	if err != nil {
 		return fmt.Errorf("invalid target: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Loading image %s from Docker...\n", sourceImage)
+	img, err := daemon.Image(srcRef)
+	if err != nil {
+		return fmt.Errorf("load image: %w", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "The push refers to repository [%s]\n", dstRef.Context().Name())
