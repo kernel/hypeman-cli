@@ -31,6 +31,9 @@ func handlePull(ctx context.Context, cmd *cli.Command) error {
 	for _, malformed := range malformedTags {
 		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
 	}
+	if credentials, ok := registryCredentialsFromCommand(cmd); ok {
+		params.Credentials = credentials
+	}
 
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 

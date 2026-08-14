@@ -170,6 +170,9 @@ func handleImageCreateLike(ctx context.Context, cmd *cli.Command, usageLine, out
 	for _, malformed := range malformedTags {
 		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
 	}
+	if credentials, ok := registryCredentialsFromCommand(cmd); ok {
+		params.Credentials = credentials
+	}
 
 	var opts []option.RequestOption
 	if cmd.Root().Bool("debug") {
@@ -199,7 +202,7 @@ func handleImageCreateLike(ctx context.Context, cmd *cli.Command, usageLine, out
 }
 
 func imageCreateFlags() []cli.Flag {
-	return []cli.Flag{
+	flags := []cli.Flag{
 		&cli.StringSliceFlag{
 			Name:  "tag",
 			Usage: "Set image tag key-value pair (KEY=VALUE, can be repeated)",
@@ -209,6 +212,7 @@ func imageCreateFlags() []cli.Flag {
 			Usage: `Target platform as os/arch[/variant] (e.g., "linux/amd64"). Defaults to the host platform`,
 		},
 	}
+	return append(flags, registryCredentialFlags()...)
 }
 
 func buildImageNewParams(name string, tagSpecs []string, platform string) (hypeman.ImageNewParams, []string) {

@@ -26,24 +26,12 @@ Examples:
 
   # Push with credentials borrowed for this push only
   hypeman push create alpine:latest registry.example.com/myapp:v1 --username alice --password s3cret`,
-	Flags: []cli.Flag{
+	Flags: append([]cli.Flag{
 		&cli.BoolFlag{
 			Name:  "insecure",
 			Usage: "Allow pushing to plain-HTTP registries",
 		},
-		&cli.StringFlag{
-			Name:  "username",
-			Usage: "Registry username",
-		},
-		&cli.StringFlag{
-			Name:  "password",
-			Usage: "Registry password or access token",
-		},
-		&cli.StringFlag{
-			Name:  "registry-token",
-			Usage: "Bearer token for an Authorization header",
-		},
-	},
+	}, registryCredentialFlags()...),
 	Action:          handlePushCreate,
 	HideHelpCommand: true,
 }
@@ -130,21 +118,7 @@ func buildPushNewParams(image, target string, insecure bool, username, password,
 		params.CreatePushRequest.Insecure = hypeman.Opt(true)
 	}
 
-	credentials := hypeman.PushCredentialsParam{}
-	haveCredentials := false
-	if username != "" {
-		credentials.Username = hypeman.Opt(username)
-		haveCredentials = true
-	}
-	if password != "" {
-		credentials.Password = hypeman.Opt(password)
-		haveCredentials = true
-	}
-	if registryToken != "" {
-		credentials.RegistryToken = hypeman.Opt(registryToken)
-		haveCredentials = true
-	}
-	if haveCredentials {
+	if credentials, ok := buildRegistryCredentials(username, password, registryToken); ok {
 		params.CreatePushRequest.Credentials = credentials
 	}
 
