@@ -135,9 +135,10 @@ func handleLocalPush(ctx context.Context, cmd *cli.Command) error {
 
 	progress := make(chan v1.Update, 32)
 	progressDone := make(chan struct{})
+	progressStop := make(chan struct{})
 	go func() {
 		defer close(progressDone)
-		renderPushProgress(progress, os.Stderr, term.IsTerminal(int(os.Stderr.Fd())))
+		renderPushProgress(progress, os.Stderr, term.IsTerminal(int(os.Stderr.Fd())), progressStop)
 	}()
 
 	err = remote.Write(dstRef, img,
@@ -146,6 +147,7 @@ func handleLocalPush(ctx context.Context, cmd *cli.Command) error {
 		remote.WithTransport(transport),
 		remote.WithProgress(progress),
 	)
+	close(progressStop)
 	<-progressDone
 	if err != nil {
 		return fmt.Errorf("push failed: %w", err)
@@ -166,23 +168,30 @@ func handleLocalPush(ctx context.Context, cmd *cli.Command) error {
 
 // renderPushProgress consumes go-containerregistry's aggregate byte updates.
 // Keep progress on stderr so stdout remains available for shell pipelines.
-func renderPushProgress(updates <-chan v1.Update, output io.Writer, interactive bool) {
-	if !interactive {
-		for range updates {
-		}
-		return
-	}
-
+func renderPushProgress(updates <-chan v1.Update, output io.Writer, interactive bool, stop <-chan struct{}) {
 	printed := false
-	for update := range updates {
-		if update.Error != nil || update.Total <= 0 {
-			continue
+	for {
+		select {
+		case <-stop:
+			if printed && interactive {
+				fmt.Fprintln(output)
+			}
+			return
+		case update, ok := <-updates:
+			if !ok {
+				if printed && interactive {
+					fmt.Fprintln(output)
+				}
+				return
+			}
+			if update.Error != nil || update.Total <= 0 {
+				continue
+			}
+			if interactive {
+				fmt.Fprintf(output, "\r%s / %s", formatBytes(update.Complete), formatBytes(update.Total))
+				printed = true
+			}
 		}
-		fmt.Fprintf(output, "\r%s / %s", formatBytes(update.Complete), formatBytes(update.Total))
-		printed = true
-	}
-	if printed {
-		fmt.Fprintln(output)
 	}
 }
 

@@ -52,11 +52,11 @@ var pushCreateCmd = cli.Command{
 	Usage:     "Create a remote push job (deprecated; use push SOURCE TARGET)",
 	ArgsUsage: "<image> <target>",
 	Flags:     pushRemoteFlags(),
-	Description: `Create a remote push job. The command waits by default; use --detach
-when existing scripts need the push ID immediately.
+	Description: `Create a remote push job and return its ID immediately.
 
-Use "hypeman push SOURCE TARGET" for the Docker-like flow. This command is
-kept as a compatibility alias for existing scripts.`,
+Use "hypeman push SOURCE TARGET" for the Docker-like flow, which waits by
+default. This command is kept as a detached compatibility alias for existing
+scripts.`,
 	Action:          handlePushCreate,
 	HideHelpCommand: true,
 }
@@ -121,36 +121,27 @@ func runRemotePush(ctx context.Context, cmd *cli.Command, image, target string) 
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
-	var createResponse []byte
-	createOpts := opts
-	if format != "auto" {
-		createOpts = append(append([]option.RequestOption(nil), opts...), option.WithResponseBodyInto(&createResponse))
-	}
-
-	push, err := client.Pushes.New(ctx, params, createOpts...)
+	push, err := client.Pushes.New(ctx, params, opts...)
 	if err != nil {
 		return err
 	}
 
-	if cmd.Bool("detach") {
+	legacyDetached := cmd.Name == "create" || cmd.Name == "remote"
+	if cmd.Bool("detach") || legacyDetached {
 		if format != "auto" {
-			return ShowJSON(os.Stdout, "push", gjson.ParseBytes(createResponse), format, transform)
+			return ShowJSON(os.Stdout, "push", gjson.Parse(push.RawJSON()), format, transform)
 		}
 		fmt.Fprintf(os.Stderr, "push queued: %s\n", push.ID)
 		fmt.Println(push.ID)
 		return nil
 	}
 
-	var finalResponse []byte
-	final, err := waitForPush(ctx, &client, push, opts, format != "auto", &finalResponse)
+	final, err := waitForPush(ctx, &client, push, opts, format != "auto")
 	if err != nil {
 		return err
 	}
 	if format != "auto" {
-		if len(finalResponse) == 0 {
-			finalResponse = []byte(final.RawJSON())
-		}
-		return ShowJSON(os.Stdout, "push", gjson.ParseBytes(finalResponse), format, transform)
+		return ShowJSON(os.Stdout, "push", gjson.Parse(final.RawJSON()), format, transform)
 	}
 	return nil
 }
@@ -187,7 +178,7 @@ func pushPassword(cmd *cli.Command) (string, error) {
 	return strings.TrimRight(string(data), "\r\n"), nil
 }
 
-func waitForPush(ctx context.Context, client *hypeman.Client, push *hypeman.Push, opts []option.RequestOption, quiet bool, finalResponse *[]byte) (*hypeman.Push, error) {
+func waitForPush(ctx context.Context, client *hypeman.Client, push *hypeman.Push, opts []option.RequestOption, quiet bool) (*hypeman.Push, error) {
 	var renderer *pushStatusRenderer
 	if !quiet {
 		fmt.Fprintf(os.Stderr, "The push refers to repository [%s]\n", pushRepository(push.Target))
@@ -244,12 +235,8 @@ func waitForPush(ctx context.Context, client *hypeman.Client, push *hypeman.Push
 		case <-ticker.C:
 		}
 
-		getOpts := opts
-		if finalResponse != nil {
-			getOpts = append(append([]option.RequestOption(nil), opts...), option.WithResponseBodyInto(finalResponse))
-		}
 		var err error
-		current, err = client.Pushes.Get(ctx, push.ID, getOpts...)
+		current, err = client.Pushes.Get(ctx, push.ID, opts...)
 		if err != nil {
 			return nil, fmt.Errorf("check push %s: %w", push.ID, err)
 		}

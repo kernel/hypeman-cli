@@ -16,7 +16,7 @@ func TestRenderPushProgress(t *testing.T) {
 	close(updates)
 
 	var output bytes.Buffer
-	renderPushProgress(updates, &output, true)
+	renderPushProgress(updates, &output, true, make(chan struct{}))
 
 	assert.Equal(t, "\r1.0 KB / 2.0 KB\r2.0 KB / 2.0 KB\n", output.String())
 }
@@ -27,7 +27,7 @@ func TestRenderPushProgressNonInteractive(t *testing.T) {
 	close(updates)
 
 	var output bytes.Buffer
-	renderPushProgress(updates, &output, false)
+	renderPushProgress(updates, &output, false, make(chan struct{}))
 
 	assert.Empty(t, output.String())
 }
