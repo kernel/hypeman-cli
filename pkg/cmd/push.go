@@ -21,16 +21,21 @@ import (
 var pushCmd = cli.Command{
 	Name:      "push",
 	Aliases:   []string{"pushes"},
-	Usage:     "Push an image to a registry",
+	Usage:     "Push images between Docker, Hypeman, and registries",
 	ArgsUsage: "IMAGE [TARGET]",
-	Description: `Push an image between Docker, Hypeman, and a remote registry.
+	Description: `Push images between Docker, Hypeman, and remote registries.
 
-With one argument, IMAGE is read from the local Docker daemon and uploaded to
-Hypeman. With TARGET, IMAGE must already exist in Hypeman and is pushed to the
-remote registry reference in TARGET.
+  hypeman push IMAGE
+      Upload IMAGE from the local Docker daemon into Hypeman.
 
-Local Docker-daemon uploads can also be written explicitly as "push local":
-  hypeman push local IMAGE [TARGET]
+  hypeman push IMAGE TARGET
+      Push an image already in Hypeman to TARGET. Waits for completion.
+
+  hypeman push --detach IMAGE TARGET
+      Queue a remote push and return its ID.
+
+Use "hypeman push local IMAGE [TARGET]" to make the local-upload flow explicit.
+The --detach flag applies to remote pushes, not local uploads.
 
 Push jobs can be inspected while they run:
   hypeman push ls
