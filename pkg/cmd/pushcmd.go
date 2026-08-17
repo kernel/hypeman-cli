@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/google/go-containerregistry/pkg/v1/daemon"
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
 	"github.com/tidwall/gjson"
@@ -95,24 +94,20 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 	// The one-argument form follows Docker's local-tag flow: TARGET must be
 	// present in the local Docker daemon before it can be staged and pushed.
 	// Cached Hypeman images use the explicit IMAGE TARGET form instead.
-	srcRef, err := name.ParseReference(target)
-	if err != nil {
-		return err
-	}
-	img, err := daemon.Image(srcRef)
+	img, err := loadDockerImage(target)
 	if err != nil {
 		return fmt.Errorf("load local Docker image %q: %w; tag it first or use hypeman push <image> <target> for a cached Hypeman image", target, err)
 	}
 
 	fmt.Fprintf(os.Stderr, "Staging local image %s in Hypeman...\n", target)
-	if err := pushLocalImage(ctx, cmd, target, target, img); err != nil {
+	if err := uploadLocalImage(ctx, cmd, target, img); err != nil {
 		return err
 	}
 
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
-	imported, err := client.Images.Get(ctx, url.PathEscape(target))
+	imported, err := waitForImageRecord(ctx, &client, target)
 	if err != nil {
-		return fmt.Errorf("get staged image %s: %w", target, err)
+		return err
 	}
 	if err := waitForImageReady(ctx, &client, imported); err != nil {
 		return err
@@ -132,6 +127,27 @@ func validateRemotePushTarget(target string) error {
 		return fmt.Errorf("target %q must include an explicit tag", target)
 	}
 	return nil
+}
+
+func waitForImageRecord(ctx context.Context, client *hypeman.Client, imageName string) (*hypeman.Image, error) {
+	ticker := time.NewTicker(300 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		img, err := client.Images.Get(ctx, url.PathEscape(imageName))
+		if err == nil {
+			return img, nil
+		}
+		if !isNotFoundError(err) {
+			return nil, fmt.Errorf("get staged image %s: %w", imageName, err)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func handlePushCreate(ctx context.Context, cmd *cli.Command) error {
@@ -226,41 +242,29 @@ func waitForPush(ctx context.Context, client *hypeman.Client, push *hypeman.Push
 			output:      os.Stderr,
 			interactive: term.IsTerminal(int(os.Stderr.Fd())),
 		}
+		defer renderer.finish()
 	}
 
-	current := push
 	var lastBytes int64
-	for {
-		if renderer != nil {
-			switch current.Status {
-			case hypeman.PushStatusQueued:
-				renderer.update(fmt.Sprintf("queued · %s", current.Target))
-			case hypeman.PushStatusPushing:
-				if current.Bytes > lastBytes {
-					lastBytes = current.Bytes
-				}
-				renderer.update(fmt.Sprintf("pushing %s · %d layers · %s", formatBytes(lastBytes), current.Layers, current.Target))
-			case hypeman.PushStatusPushed:
-				renderer.update(fmt.Sprintf("pushed · digest: %s", current.Digest))
-			case hypeman.PushStatusFailed:
-				message := current.Error
-				if message == "" {
-					message = "unknown error"
-				}
-				renderer.update("failed · " + message)
-			}
+	return pollPush(ctx, client, push, opts, func(current *hypeman.Push) {
+		if renderer == nil {
+			return
 		}
+		if message := pushStatusText(current, &lastBytes); message != "" {
+			renderer.update(message)
+		}
+	})
+}
+
+func pollPush(ctx context.Context, client *hypeman.Client, push *hypeman.Push, opts []option.RequestOption, update func(*hypeman.Push)) (*hypeman.Push, error) {
+	current := push
+	for {
+		update(current)
 
 		switch current.Status {
 		case hypeman.PushStatusPushed:
-			if renderer != nil {
-				renderer.finish()
-			}
 			return current, nil
 		case hypeman.PushStatusFailed:
-			if renderer != nil {
-				renderer.finish()
-			}
 			if current.Error != "" {
 				return nil, fmt.Errorf("push %s failed: %s", push.ID, current.Error)
 			}
@@ -280,6 +284,28 @@ func waitForPush(ctx context.Context, client *hypeman.Client, push *hypeman.Push
 		if err != nil {
 			return nil, fmt.Errorf("check push %s: %w", push.ID, err)
 		}
+	}
+}
+
+func pushStatusText(push *hypeman.Push, lastBytes *int64) string {
+	switch push.Status {
+	case hypeman.PushStatusQueued:
+		return fmt.Sprintf("queued · %s", push.Target)
+	case hypeman.PushStatusPushing:
+		if push.Bytes > *lastBytes {
+			*lastBytes = push.Bytes
+		}
+		return fmt.Sprintf("pushing %s · %d layers · %s", formatBytes(*lastBytes), push.Layers, push.Target)
+	case hypeman.PushStatusPushed:
+		return fmt.Sprintf("pushed · digest: %s", push.Digest)
+	case hypeman.PushStatusFailed:
+		message := push.Error
+		if message == "" {
+			message = "unknown error"
+		}
+		return "failed · " + message
+	default:
+		return ""
 	}
 }
 

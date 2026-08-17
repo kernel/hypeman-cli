@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/kernel/hypeman-go"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -30,6 +31,30 @@ func TestRenderPushProgressNonInteractive(t *testing.T) {
 	renderPushProgress(updates, &output, false, make(chan struct{}))
 
 	assert.Empty(t, output.String())
+}
+
+func TestPushStatusText(t *testing.T) {
+	lastBytes := int64(0)
+
+	assert.Equal(t, "queued · registry.example.com/app:v1", pushStatusText(&hypeman.Push{
+		Status: hypeman.PushStatusQueued,
+		Target: "registry.example.com/app:v1",
+	}, &lastBytes))
+	assert.Equal(t, "pushing 2.0 KB · 2 layers · registry.example.com/app:v1", pushStatusText(&hypeman.Push{
+		Status: hypeman.PushStatusPushing,
+		Bytes:  2048,
+		Layers: 2,
+		Target: "registry.example.com/app:v1",
+	}, &lastBytes))
+	assert.Equal(t, int64(2048), lastBytes)
+	assert.Equal(t, "pushed · digest: sha256:abc", pushStatusText(&hypeman.Push{
+		Status: hypeman.PushStatusPushed,
+		Digest: "sha256:abc",
+	}, &lastBytes))
+	assert.Equal(t, "failed · registry unavailable", pushStatusText(&hypeman.Push{
+		Status: hypeman.PushStatusFailed,
+		Error:  "registry unavailable",
+	}, &lastBytes))
 }
 
 func TestPushStatusRenderer(t *testing.T) {

@@ -95,10 +95,31 @@ func handleLocalPush(ctx context.Context, cmd *cli.Command) error {
 		targetName = args[1]
 	}
 
-	return pushLocalImage(ctx, cmd, sourceImage, targetName, nil)
+	return pushLocalImage(ctx, cmd, sourceImage, targetName)
 }
 
-func pushLocalImage(ctx context.Context, cmd *cli.Command, sourceImage, targetName string, img v1.Image) error {
+func pushLocalImage(ctx context.Context, cmd *cli.Command, sourceImage, targetName string) error {
+	fmt.Fprintf(os.Stderr, "Loading image %s from Docker...\n", sourceImage)
+	img, err := loadDockerImage(sourceImage)
+	if err != nil {
+		return err
+	}
+	return uploadLocalImage(ctx, cmd, targetName, img)
+}
+
+func loadDockerImage(image string) (v1.Image, error) {
+	srcRef, err := name.ParseReference(image)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source image: %w", err)
+	}
+	img, err := daemon.Image(srcRef)
+	if err != nil {
+		return nil, fmt.Errorf("load image: %w", err)
+	}
+	return img, nil
+}
+
+func uploadLocalImage(ctx context.Context, cmd *cli.Command, targetName string, img v1.Image) error {
 	baseURL := resolveBaseURL(cmd)
 
 	parsedURL, err := url.Parse(baseURL)
@@ -114,11 +135,6 @@ func pushLocalImage(ctx context.Context, cmd *cli.Command, sourceImage, targetNa
 
 	registryHost := parsedURL.Host
 
-	srcRef, err := name.ParseReference(sourceImage)
-	if err != nil {
-		return fmt.Errorf("invalid source image: %w", err)
-	}
-
 	// Build and validate the target before opening the Docker daemon. The
 	// server computes the image digest from the manifest, while the tag keeps
 	// the image addressable with Docker-like image names after the push.
@@ -130,14 +146,6 @@ func pushLocalImage(ctx context.Context, cmd *cli.Command, sourceImage, targetNa
 	dstRef, err := name.ParseReference(targetRef, parseOptions...)
 	if err != nil {
 		return fmt.Errorf("invalid target: %w", err)
-	}
-
-	if img == nil {
-		fmt.Fprintf(os.Stderr, "Loading image %s from Docker...\n", sourceImage)
-		img, err = daemon.Image(srcRef)
-		if err != nil {
-			return fmt.Errorf("load image: %w", err)
-		}
 	}
 
 	fmt.Fprintf(os.Stderr, "The push refers to repository [%s]\n", dstRef.Context().Name())
