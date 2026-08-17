@@ -135,9 +135,8 @@ func uploadLocalImage(ctx context.Context, cmd *cli.Command, targetName string, 
 
 	registryHost := parsedURL.Host
 
-	// Build and validate the target before opening the Docker daemon. The
-	// server computes the image digest from the manifest, while the tag keeps
-	// the image addressable with Docker-like image names after the push.
+	// The server computes the image digest from the manifest, while the tag
+	// keeps the image addressable with Docker-like image names after the push.
 	targetRef := registryHost + "/" + strings.TrimPrefix(targetName, "/")
 	parseOptions := []name.Option(nil)
 	if parsedURL.Scheme == "http" {

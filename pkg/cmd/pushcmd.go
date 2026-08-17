@@ -250,7 +250,9 @@ func waitForPush(ctx context.Context, client *hypeman.Client, push *hypeman.Push
 		if renderer == nil {
 			return
 		}
-		if message := pushStatusText(current, &lastBytes); message != "" {
+		message, updatedBytes := pushStatusText(current, lastBytes)
+		lastBytes = updatedBytes
+		if message != "" {
 			renderer.update(message)
 		}
 	})
@@ -287,25 +289,25 @@ func pollPush(ctx context.Context, client *hypeman.Client, push *hypeman.Push, o
 	}
 }
 
-func pushStatusText(push *hypeman.Push, lastBytes *int64) string {
+func pushStatusText(push *hypeman.Push, lastBytes int64) (string, int64) {
 	switch push.Status {
 	case hypeman.PushStatusQueued:
-		return fmt.Sprintf("queued · %s", push.Target)
+		return fmt.Sprintf("queued · %s", push.Target), lastBytes
 	case hypeman.PushStatusPushing:
-		if push.Bytes > *lastBytes {
-			*lastBytes = push.Bytes
+		if push.Bytes > lastBytes {
+			lastBytes = push.Bytes
 		}
-		return fmt.Sprintf("pushing %s · %d layers · %s", formatBytes(*lastBytes), push.Layers, push.Target)
+		return fmt.Sprintf("pushing %s · %d layers · %s", formatBytes(lastBytes), push.Layers, push.Target), lastBytes
 	case hypeman.PushStatusPushed:
-		return fmt.Sprintf("pushed · digest: %s", push.Digest)
+		return fmt.Sprintf("pushed · digest: %s", push.Digest), lastBytes
 	case hypeman.PushStatusFailed:
 		message := push.Error
 		if message == "" {
 			message = "unknown error"
 		}
-		return "failed · " + message
+		return "failed · " + message, lastBytes
 	default:
-		return ""
+		return "", lastBytes
 	}
 }
 
