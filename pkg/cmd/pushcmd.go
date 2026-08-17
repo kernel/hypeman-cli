@@ -92,25 +92,30 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 		return err
 	}
 
-	// A local Docker tag can be staged into Hypeman before the remote push.
-	// When no matching local image exists, use the already-cached Hypeman image.
+	// The one-argument form follows Docker's local-tag flow: TARGET must be
+	// present in the local Docker daemon before it can be staged and pushed.
+	// Cached Hypeman images use the explicit IMAGE TARGET form instead.
 	srcRef, err := name.ParseReference(target)
-	if err == nil {
-		if img, loadErr := daemon.Image(srcRef); loadErr == nil {
-			fmt.Fprintf(os.Stderr, "Staging local image %s in Hypeman...\n", target)
-			if err := pushLocalImage(ctx, cmd, target, target, img); err != nil {
-				return err
-			}
+	if err != nil {
+		return err
+	}
+	img, err := daemon.Image(srcRef)
+	if err != nil {
+		return fmt.Errorf("load local Docker image %q: %w; tag it first or use hypeman push <image> <target> for a cached Hypeman image", target, err)
+	}
 
-			client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
-			imported, err := client.Images.Get(ctx, url.PathEscape(target))
-			if err != nil {
-				return fmt.Errorf("get staged image %s: %w", target, err)
-			}
-			if err := waitForImageReady(ctx, &client, imported); err != nil {
-				return err
-			}
-		}
+	fmt.Fprintf(os.Stderr, "Staging local image %s in Hypeman...\n", target)
+	if err := pushLocalImage(ctx, cmd, target, target, img); err != nil {
+		return err
+	}
+
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	imported, err := client.Images.Get(ctx, url.PathEscape(target))
+	if err != nil {
+		return fmt.Errorf("get staged image %s: %w", target, err)
+	}
+	if err := waitForImageReady(ctx, &client, imported); err != nil {
+		return err
 	}
 
 	return runRemotePush(ctx, cmd, target, target)

@@ -26,8 +26,8 @@ var pushCmd = cli.Command{
 	Description: `Push images between Docker, Hypeman, and remote registries.
 
   hypeman push TARGET
-      Push TARGET to its remote registry. If TARGET exists in local Docker,
-      stage it in Hypeman first.
+      Push a local Docker image tagged TARGET to its remote registry. The CLI
+      stages it in Hypeman first.
 
   hypeman push IMAGE TARGET
       Push an image already in Hypeman to TARGET. Waits for completion.
