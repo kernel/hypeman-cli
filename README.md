@@ -130,6 +130,25 @@ The CLI also provides resource-based commands for more advanced usage:
 hypeman [resource] [command] [flags]
 ```
 
+## Host Capabilities
+
+Check what the server build supports on this host before relying on a runtime or feature:
+
+```bash
+# Show server/API version, host OS/arch, runtimes, image platforms, and networking
+hypeman capabilities
+
+# Show capabilities as JSON
+hypeman capabilities --format json
+
+# Show only the runtimes this host supports
+hypeman capabilities --transform runtimes
+```
+
+Each runtime is listed with an `available` flag and its own feature IDs (for example
+`snapshots`, `standby`, `fork`, `gpu-passthrough`), so a runtime is only launchable when
+its `available` flag is `yes`.
+
 ## Resource Management
 
 ### Viewing Server Resources
