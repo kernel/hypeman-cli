@@ -25,31 +25,37 @@ var pushCmd = cli.Command{
 	ArgsUsage: "IMAGE [TARGET]",
 	Description: `Push images between Docker, Hypeman, and remote registries.
 
-  hypeman push IMAGE
-      Upload IMAGE from the local Docker daemon into Hypeman.
+  hypeman push TARGET
+      Push TARGET to its remote registry. If TARGET exists in local Docker,
+      stage it in Hypeman first.
 
   hypeman push IMAGE TARGET
       Push an image already in Hypeman to TARGET. Waits for completion.
 
-  hypeman push --detach IMAGE TARGET
+  hypeman push --detach TARGET
       Queue a remote push and return its ID.
 
-Use "hypeman push local IMAGE [TARGET]" to make the local-upload flow explicit.
-The --detach flag applies to remote pushes, not local uploads.
+Use "hypeman push local IMAGE [TARGET]" for Docker-daemon uploads that should
+only go to Hypeman. The --detach flag applies to remote pushes, not local
+uploads.
 
 Push jobs can be inspected while they run:
   hypeman push ls
   hypeman push inspect <id>
 
 Examples:
-  # Push a cached image to ECR
+  # Push a local Docker tag to ECR
+  docker tag alpine:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
+  hypeman push 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
+
+  # Push a cached Hypeman image to ECR
   hypeman push alpine:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
 
   # Push with credentials read from stdin
-  echo "$ECR_PASSWORD" | hypeman push alpine:latest registry.example.com/app:v1 \
+  echo "$ECR_PASSWORD" | hypeman push registry.example.com/app:v1 \
     --username AWS --password-stdin
 
-  # Upload a local Docker image into Hypeman
+  # Upload a local Docker image into Hypeman only
   hypeman push local nginx:latest`,
 	Flags:           pushRemoteFlags(),
 	Commands:        []*cli.Command{&pushLocalCmd, &pushCreateCmd, &pushListCmd, &pushGetCmd},
@@ -69,12 +75,11 @@ func handlePush(ctx context.Context, cmd *cli.Command) error {
 	args := cmd.Args().Slice()
 	switch len(args) {
 	case 1:
-		// Keep the old one-argument form working for existing scripts.
-		return handleLocalPush(ctx, cmd)
+		return handleRemotePushTarget(ctx, cmd, args[0])
 	case 2:
 		return runRemotePush(ctx, cmd, args[0], args[1])
 	default:
-		return fmt.Errorf("image reference required\nUsage: hypeman push <image> [target]")
+		return fmt.Errorf("image reference required\nUsage: hypeman push <target> or hypeman push <image> <target>")
 	}
 }
 
@@ -90,6 +95,10 @@ func handleLocalPush(ctx context.Context, cmd *cli.Command) error {
 		targetName = args[1]
 	}
 
+	return pushLocalImage(ctx, cmd, sourceImage, targetName, nil)
+}
+
+func pushLocalImage(ctx context.Context, cmd *cli.Command, sourceImage, targetName string, img v1.Image) error {
 	baseURL := resolveBaseURL(cmd)
 
 	parsedURL, err := url.Parse(baseURL)
@@ -123,10 +132,12 @@ func handleLocalPush(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("invalid target: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "Loading image %s from Docker...\n", sourceImage)
-	img, err := daemon.Image(srcRef)
-	if err != nil {
-		return fmt.Errorf("load image: %w", err)
+	if img == nil {
+		fmt.Fprintf(os.Stderr, "Loading image %s from Docker...\n", sourceImage)
+		img, err = daemon.Image(srcRef)
+		if err != nil {
+			return fmt.Errorf("load image: %w", err)
+		}
 	}
 
 	fmt.Fprintf(os.Stderr, "The push refers to repository [%s]\n", dstRef.Context().Name())

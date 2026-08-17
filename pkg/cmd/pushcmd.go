@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/daemon"
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
 	"github.com/tidwall/gjson"
@@ -85,6 +87,48 @@ var pushGetCmd = cli.Command{
 	HideHelpCommand: true,
 }
 
+func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string) error {
+	if err := validateRemotePushTarget(target); err != nil {
+		return err
+	}
+
+	// A local Docker tag can be staged into Hypeman before the remote push.
+	// When no matching local image exists, use the already-cached Hypeman image.
+	srcRef, err := name.ParseReference(target)
+	if err == nil {
+		if img, loadErr := daemon.Image(srcRef); loadErr == nil {
+			fmt.Fprintf(os.Stderr, "Staging local image %s in Hypeman...\n", target)
+			if err := pushLocalImage(ctx, cmd, target, target, img); err != nil {
+				return err
+			}
+
+			client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+			imported, err := client.Images.Get(ctx, url.PathEscape(target))
+			if err != nil {
+				return fmt.Errorf("get staged image %s: %w", target, err)
+			}
+			if err := waitForImageReady(ctx, &client, imported); err != nil {
+				return err
+			}
+		}
+	}
+
+	return runRemotePush(ctx, cmd, target, target)
+}
+
+func validateRemotePushTarget(target string) error {
+	if _, err := name.ParseReference(target); err != nil {
+		return fmt.Errorf("invalid target %q: %w", target, err)
+	}
+	lastSlash := strings.LastIndex(target, "/")
+	lastColon := strings.LastIndex(target, ":")
+	lastAt := strings.LastIndex(target, "@")
+	if lastAt > lastSlash || lastColon <= lastSlash {
+		return fmt.Errorf("target %q must include an explicit tag", target)
+	}
+	return nil
+}
+
 func handlePushCreate(ctx context.Context, cmd *cli.Command) error {
 	args := cmd.Args().Slice()
 	if len(args) != 2 {
@@ -150,16 +194,7 @@ func validateRemotePushReferences(image, target string) error {
 	if _, err := name.ParseReference(image); err != nil {
 		return fmt.Errorf("invalid source image %q: %w", image, err)
 	}
-	if _, err := name.ParseReference(target); err != nil {
-		return fmt.Errorf("invalid target %q: %w", target, err)
-	}
-	lastSlash := strings.LastIndex(target, "/")
-	lastColon := strings.LastIndex(target, ":")
-	lastAt := strings.LastIndex(target, "@")
-	if lastAt > lastSlash || lastColon <= lastSlash {
-		return fmt.Errorf("target %q must include an explicit tag", target)
-	}
-	return nil
+	return validateRemotePushTarget(target)
 }
 
 func pushPassword(cmd *cli.Command) (string, error) {

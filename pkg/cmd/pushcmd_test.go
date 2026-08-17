@@ -20,8 +20,8 @@ func TestPushCommandStructure(t *testing.T) {
 	assert.Contains(t, pushListCmd.Aliases, "ls")
 	assert.Contains(t, pushGetCmd.Aliases, "inspect")
 
-	// The parent action remains reachable for the legacy local-upload form and
-	// the new direct remote-push form.
+	// The parent action remains reachable for the staged local and direct
+	// remote-push forms.
 	assert.NotNil(t, pushCmd.Action)
 }
 
