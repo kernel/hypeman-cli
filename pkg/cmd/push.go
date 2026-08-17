@@ -22,13 +22,14 @@ var pushCmd = cli.Command{
 	Name:      "push",
 	Aliases:   []string{"pushes"},
 	Usage:     "Push an image to a registry",
-	ArgsUsage: "SOURCE [TARGET]",
-	Description: `Push an image from Hypeman to a remote registry.
+	ArgsUsage: "IMAGE [TARGET]",
+	Description: `Push an image between Docker, Hypeman, and a remote registry.
 
-The source image must already exist in Hypeman. TARGET is the remote registry
-reference, matching Docker's push syntax as closely as possible.
+With one argument, IMAGE is read from the local Docker daemon and uploaded to
+Hypeman. With TARGET, IMAGE must already exist in Hypeman and is pushed to the
+remote registry reference in TARGET.
 
-Local Docker-daemon uploads remain available explicitly with "push local":
+Local Docker-daemon uploads can also be written explicitly as "push local":
   hypeman push local IMAGE [TARGET]
 
 Push jobs can be inspected while they run:
@@ -68,7 +69,7 @@ func handlePush(ctx context.Context, cmd *cli.Command) error {
 	case 2:
 		return runRemotePush(ctx, cmd, args[0], args[1])
 	default:
-		return fmt.Errorf("source image and target required\nUsage: hypeman push <source> <target>")
+		return fmt.Errorf("image reference required\nUsage: hypeman push <image> [target]")
 	}
 }
 
