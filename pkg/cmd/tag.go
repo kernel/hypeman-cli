@@ -45,10 +45,15 @@ func handleTag(ctx context.Context, cmd *cli.Command) error {
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
+	result := gjson.ParseBytes(res)
 	if format != "auto" {
-		return ShowJSON(os.Stdout, "tag", gjson.ParseBytes(res), format, transform)
+		return ShowJSON(os.Stdout, "tag", result, format, transform)
 	}
 
-	fmt.Println(target)
+	imageName := result.Get("name").String()
+	if imageName == "" {
+		imageName = target
+	}
+	fmt.Println(imageName)
 	return nil
 }
