@@ -97,22 +97,8 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 	}
 
 	// If Hypeman does not have the image, preserve the Docker-daemon fallback.
-	img, err := loadDockerImage(target)
-	if err != nil {
+	if _, err := stageDockerImage(ctx, cmd, &client, target, target); err != nil {
 		return fmt.Errorf("load local Docker image %q: %w; tag it first or use hypeman push <image> <target> for a cached Hypeman image", target, err)
-	}
-
-	fmt.Fprintf(os.Stderr, "Staging local image %s in Hypeman...\n", target)
-	if err := uploadLocalImage(ctx, cmd, target, img); err != nil {
-		return err
-	}
-
-	imported, err := waitForImageRecord(ctx, &client, target)
-	if err != nil {
-		return err
-	}
-	if err := waitForImageReady(ctx, &client, imported); err != nil {
-		return err
 	}
 
 	return runRemotePush(ctx, cmd, target, target)
@@ -132,6 +118,32 @@ func validateTaggedImageReference(target string) error {
 		return fmt.Errorf("target %q must include an explicit tag", target)
 	}
 	return nil
+}
+
+func stageDockerImage(ctx context.Context, cmd *cli.Command, client *hypeman.Client, source, target string) (*hypeman.Image, error) {
+	img, err := loadDockerImage(source)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Fprintf(os.Stderr, "Staging local image %s in Hypeman...\n", source)
+	if err := uploadLocalImage(ctx, cmd, target, img); err != nil {
+		return nil, err
+	}
+
+	imported, err := waitForImageRecord(ctx, client, target)
+	if err != nil {
+		return nil, err
+	}
+	if err := waitForImageReady(ctx, client, imported); err != nil {
+		return nil, err
+	}
+
+	ready, err := client.Images.Get(ctx, url.PathEscape(target))
+	if err != nil {
+		return nil, fmt.Errorf("get staged image %s: %w", target, err)
+	}
+	return ready, nil
 }
 
 func waitForImageRecord(ctx context.Context, client *hypeman.Client, imageName string) (*hypeman.Image, error) {
