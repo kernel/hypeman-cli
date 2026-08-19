@@ -48,7 +48,7 @@ func TestTagCommandPostsEscapedSourceAndTarget(t *testing.T) {
 	var method, path, target string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		method = r.Method
-		path = r.URL.Path
+		path = r.URL.EscapedPath()
 		var body struct {
 			Target string `json:"target"`
 		}
@@ -71,7 +71,7 @@ func TestTagCommandPostsEscapedSourceAndTarget(t *testing.T) {
 	}
 
 	assert.Equal(t, http.MethodPost, method)
-	assert.Equal(t, "/images/builds/job:latest/tag", path)
+	assert.Equal(t, "/images/builds%2Fjob:latest/tag", path)
 	assert.Equal(t, "myapp:latest", target)
 
 	stdout := os.Stdout
