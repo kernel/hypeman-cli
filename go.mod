@@ -91,3 +91,5 @@ require (
 )
 
 replace github.com/docker/cli v29.0.3+incompatible => github.com/docker/cli v29.2.0+incompatible
+
+replace github.com/docker/docker v28.5.2+incompatible => github.com/docker/docker v28.5.3-0.20260325120914-0afb41ce194c+incompatible
