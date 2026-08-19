@@ -82,9 +82,21 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 		return err
 	}
 
-	// The one-argument form follows Docker's local-tag flow: TARGET must be
-	// present in the local Docker daemon before it can be staged and pushed.
-	// Cached Hypeman images use the explicit IMAGE TARGET form instead.
+	// Prefer an image already cached in Hypeman. This makes `hypeman tag` followed
+	// by `hypeman push TARGET` work without requiring a local Docker daemon.
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	cachedImage, err := client.Images.Get(ctx, url.PathEscape(target))
+	if err == nil {
+		if err := waitForImageReady(ctx, &client, cachedImage); err != nil {
+			return err
+		}
+		return runRemotePush(ctx, cmd, target, target)
+	}
+	if !isNotFoundError(err) {
+		return fmt.Errorf("get cached image %s: %w", target, err)
+	}
+
+	// If Hypeman does not have the image, preserve the Docker-daemon fallback.
 	img, err := loadDockerImage(target)
 	if err != nil {
 		return fmt.Errorf("load local Docker image %q: %w; tag it first or use hypeman push <image> <target> for a cached Hypeman image", target, err)
@@ -95,7 +107,6 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 		return err
 	}
 
-	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 	imported, err := waitForImageRecord(ctx, &client, target)
 	if err != nil {
 		return err
