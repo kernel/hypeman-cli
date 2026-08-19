@@ -34,6 +34,9 @@ go run cmd/hypeman/main.go
 # Pull an image
 hypeman pull nginx:alpine
 
+# Create a local tag without pulling the image again
+hypeman tag nginx:alpine my-registry.example.com/myapp:latest
+
 # Boot a new VM (auto-pulls image if needed)
 hypeman run --name my-app nginx:alpine
 

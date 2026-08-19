@@ -73,6 +73,7 @@ func init() {
 			&execCmd,
 			&cpCmd,
 			&pullCmd,
+			&tagCmd,
 			&pushCmd,
 			&runCmd,
 			&psCmd,
