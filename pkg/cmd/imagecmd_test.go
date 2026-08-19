@@ -1,6 +1,12 @@
 package cmd
 
 import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,4 +42,67 @@ func TestBuildImageNewParamsPlatform(t *testing.T) {
 func TestPlatformOrDash(t *testing.T) {
 	assert.Equal(t, "linux/amd64", platformOrDash("linux/amd64"))
 	assert.Equal(t, "-", platformOrDash(""))
+}
+
+func TestTagCommandPostsEscapedSourceAndTarget(t *testing.T) {
+	var method, path, target string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		path = r.URL.EscapedPath()
+		var body struct {
+			Target string `json:"target"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		target = body.Target
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"name":"docker.io/library/myapp:latest"}`))
+	}))
+	defer server.Close()
+
+	err := Command.Run(context.Background(), []string{
+		"hypeman", "--base-url", server.URL, "--format", "json",
+		"tag", "builds/job:latest", "myapp:latest",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t, http.MethodPost, method)
+	assert.Equal(t, "/images/builds%2Fjob:latest/tag", path)
+	assert.Equal(t, "myapp:latest", target)
+
+	stdout := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = writer
+	err = Command.Run(context.Background(), []string{
+		"hypeman", "--base-url", server.URL,
+		"tag", "builds/job:latest", "myapp:latest",
+	})
+	_ = writer.Close()
+	os.Stdout = stdout
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Contains(t, string(output), "docker.io/library/myapp:latest")
+}
+
+func TestTagCommandFallsBackToDockerWhenHypemanMisses(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+
+	err := Command.Run(context.Background(), []string{
+		"hypeman", "--base-url", server.URL,
+		"tag", "not a valid image", "myapp:latest",
+	})
+	require.ErrorContains(t, err, "was not found in Hypeman or Docker")
 }
