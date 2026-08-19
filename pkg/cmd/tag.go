@@ -16,7 +16,9 @@ var tagCmd = cli.Command{
 	Name:      "tag",
 	Usage:     "Create a local image tag",
 	ArgsUsage: "<source> <target>",
-	Action:    handleTag,
+	Description: `Create a local image tag in Hypeman. If the source is not already
+cached in Hypeman, fall back to the matching image in the local Docker daemon.`,
+	Action: handleTag,
 }
 
 func handleTag(ctx context.Context, cmd *cli.Command) error {
@@ -40,7 +42,14 @@ func handleTag(ctx context.Context, cmd *cli.Command) error {
 	}{Target: target}
 	path := "/images/" + url.PathEscape(source) + "/tag"
 	if err := client.Post(ctx, path, body, nil, opts...); err != nil {
-		return err
+		if !isNotFoundError(err) {
+			return err
+		}
+		staged, stageErr := stageDockerImage(ctx, cmd, &client, source, target)
+		if stageErr != nil {
+			return fmt.Errorf("image %q was not found in Hypeman or Docker: %w", source, stageErr)
+		}
+		res = []byte(staged.RawJSON())
 	}
 
 	format := cmd.Root().String("format")
