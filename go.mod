@@ -11,7 +11,7 @@ require (
 	github.com/google/go-containerregistry v0.20.7
 	github.com/gorilla/websocket v1.5.3
 	github.com/itchyny/json2yaml v0.1.4
-	github.com/kernel/hypeman-go v0.24.1-0.20260817185642-7f21c67d750f
+	github.com/kernel/hypeman-go v0.25.0
 	github.com/knadh/koanf/parsers/yaml v1.1.0
 	github.com/knadh/koanf/providers/env v1.1.0
 	github.com/knadh/koanf/providers/file v1.2.1
