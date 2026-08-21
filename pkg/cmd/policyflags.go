@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/kernel/hypeman-cli/lib/compose"
+	"github.com/kernel/hypeman-go"
+	"github.com/kernel/hypeman-go/packages/param"
 	"github.com/urfave/cli/v3"
 )
 
@@ -83,6 +86,57 @@ func restartPolicyFlags(prefix string) []cli.Flag {
 			Usage: `Running this long resets the consecutive restart attempt count (e.g., "10m")`,
 		},
 	}
+}
+
+func expirationFlags(prefix string) []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{
+			Name:  prefix + "ttl",
+			Usage: `Relative lifetime in Go duration format (e.g., "90m"); "0s" disables automatic expiration`,
+		},
+		&cli.StringFlag{
+			Name:  prefix + "expires-at",
+			Usage: `Absolute expiration time in RFC3339 format (e.g., "2026-01-02T15:04:05Z")`,
+		},
+	}
+}
+
+type expirationInput struct {
+	TTL       param.Opt[string]
+	ExpiresAt param.Opt[time.Time]
+}
+
+func parseExpirationInput(cmd *cli.Command, prefix string) (expirationInput, bool, error) {
+	ttlFlag := prefix + "ttl"
+	expiresAtFlag := prefix + "expires-at"
+
+	ttlSet := cmd.IsSet(ttlFlag)
+	expiresAtSet := cmd.IsSet(expiresAtFlag)
+	// The API rejects requests carrying both fields, so fail before the round trip.
+	if ttlSet && expiresAtSet {
+		return expirationInput{}, false, fmt.Errorf("--%sttl and --%sexpires-at are mutually exclusive", prefix, prefix)
+	}
+	if !ttlSet && !expiresAtSet {
+		return expirationInput{}, false, nil
+	}
+
+	var in expirationInput
+	if ttlSet {
+		ttl := cmd.String(ttlFlag)
+		if _, err := time.ParseDuration(ttl); err != nil {
+			return expirationInput{}, false, fmt.Errorf(`invalid --%sttl %q: expected a Go duration such as "90m" or "0s"`, prefix, ttl)
+		}
+		in.TTL = hypeman.Opt(ttl)
+	}
+	if expiresAtSet {
+		raw := cmd.String(expiresAtFlag)
+		expiresAt, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return expirationInput{}, false, fmt.Errorf(`invalid --%sexpires-at %q: expected an RFC3339 timestamp such as "2026-01-02T15:04:05Z"`, prefix, raw)
+		}
+		in.ExpiresAt = hypeman.Opt(expiresAt)
+	}
+	return in, true, nil
 }
 
 func parseHealthCheckInput(cmd *cli.Command, prefix string) (compose.HealthCheckInput, bool, error) {

@@ -18,33 +18,24 @@ import (
 )
 
 func pushRemoteFlags() []cli.Flag {
-	return []cli.Flag{
+	flags := []cli.Flag{
 		&cli.BoolFlag{
 			Name:  "insecure",
 			Usage: "Allow pushing to plain-HTTP registries",
 		},
-		&cli.StringFlag{
-			Name:  "username",
-			Usage: "Registry username",
-		},
-		&cli.StringFlag{
-			Name:  "password",
-			Usage: "Registry password or access token",
-		},
+	}
+	flags = append(flags, registryCredentialFlags()...)
+	return append(flags,
 		&cli.BoolFlag{
 			Name:  "password-stdin",
 			Usage: "Read the registry password from stdin",
-		},
-		&cli.StringFlag{
-			Name:  "registry-token",
-			Usage: "Bearer token for an Authorization header",
 		},
 		&cli.BoolFlag{
 			Name:    "detach",
 			Aliases: []string{"d"},
 			Usage:   "Return after queueing the push",
 		},
-	}
+	)
 }
 
 var pushCreateCmd = cli.Command{
@@ -357,21 +348,7 @@ func buildPushNewParams(image, target string, insecure bool, username, password,
 		params.CreatePushRequest.Insecure = hypeman.Opt(true)
 	}
 
-	credentials := hypeman.PushCredentialsParam{}
-	haveCredentials := false
-	if username != "" {
-		credentials.Username = hypeman.Opt(username)
-		haveCredentials = true
-	}
-	if password != "" {
-		credentials.Password = hypeman.Opt(password)
-		haveCredentials = true
-	}
-	if registryToken != "" {
-		credentials.RegistryToken = hypeman.Opt(registryToken)
-		haveCredentials = true
-	}
-	if haveCredentials {
+	if credentials, ok := buildRegistryCredentials(username, password, registryToken); ok {
 		params.CreatePushRequest.Credentials = credentials
 	}
 
