@@ -46,7 +46,10 @@ Examples:
   hypeman run --hypervisor qemu-microvm myimage:latest
 
   # Run with bandwidth limits
-  hypeman run --bandwidth-down 1Gbps --bandwidth-up 500Mbps myimage:latest`,
+  hypeman run --bandwidth-down 1Gbps --bandwidth-up 500Mbps myimage:latest
+
+  # Run with an automatic expiration two hours after creation
+  hypeman run --ttl 2h myimage:latest`,
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:  "name",
@@ -193,6 +196,7 @@ Examples:
 }
 
 func init() {
+	runCmd.Flags = append(runCmd.Flags, expirationFlags("")...)
 	runCmd.Flags = append(runCmd.Flags, healthCheckFlags("health-")...)
 	runCmd.Flags = append(runCmd.Flags, restartPolicyFlags("restart-")...)
 }
@@ -289,6 +293,14 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 	}
 	if restartInput, ok := parseRestartPolicyInput(cmd, "restart-"); ok {
 		params.RestartPolicy = compose.BuildRestartPolicyParam(restartInput)
+	}
+	expiration, expirationSet, err := parseExpirationInput(cmd, "")
+	if err != nil {
+		return err
+	}
+	if expirationSet {
+		params.Ttl = expiration.TTL
+		params.ExpiresAt = expiration.ExpiresAt
 	}
 
 	// Network configuration
