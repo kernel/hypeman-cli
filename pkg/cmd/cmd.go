@@ -88,6 +88,7 @@ func init() {
 			&standbyCmd,
 			&restoreCmd,
 			&forkCmd,
+			&tagCmd,
 			&imageCmd,
 			&ingressCmd,
 			&snapshotCmd,
