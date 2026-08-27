@@ -98,7 +98,7 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 
 	// If Hypeman does not have the image, preserve the Docker-daemon fallback.
 	if _, err := stageDockerImage(ctx, cmd, &client, target, target); err != nil {
-		return fmt.Errorf("load local Docker image %q: %w; tag it first or use hypeman push <image> <target> for a cached Hypeman image", target, err)
+		return fmt.Errorf("image %q was not found in Hypeman; stage it from Docker: %w", target, err)
 	}
 
 	return runRemotePush(ctx, cmd, target, target)

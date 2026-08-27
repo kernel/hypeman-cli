@@ -48,8 +48,9 @@ Examples:
   hypeman tag alpine:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
   hypeman push 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
 
-  # Push a local Docker tag to ECR
+  # Stage a local Docker tag, then push it to ECR
   docker tag alpine:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
+  hypeman push local 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
   hypeman push 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
 
   # Push a cached Hypeman image directly to a different remote target

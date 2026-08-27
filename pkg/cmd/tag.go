@@ -13,12 +13,16 @@ import (
 )
 
 var tagCmd = cli.Command{
-	Name:      "tag",
-	Usage:     "Create a local image tag",
-	ArgsUsage: "<source> <target>",
-	Description: `Create a local image tag in Hypeman. If the source is not already
-cached in Hypeman, fall back to the matching image in the local Docker daemon.`,
-	Action: handleTag,
+	Name:            "tag",
+	Usage:           "Create a local image tag",
+	ArgsUsage:       "<source> <target>",
+	Description:     "Create a local image tag in Hypeman without pulling or converting the image.",
+	Action:          handleTag,
+	HideHelpCommand: true,
+}
+
+type tagImageRequest struct {
+	Target string `json:"target"`
 }
 
 func handleTag(ctx context.Context, cmd *cli.Command) error {
@@ -37,17 +41,18 @@ func handleTag(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	opts = append(opts, option.WithResponseBodyInto(&res))
-	body := struct {
-		Target string `json:"target"`
-	}{Target: target}
 	path := "/images/" + url.PathEscape(source) + "/tag"
-	if err := client.Post(ctx, path, body, nil, opts...); err != nil {
+	if err := client.Post(ctx, path, tagImageRequest{Target: target}, nil, opts...); err != nil {
 		if !isNotFoundError(err) {
 			return err
 		}
+
+		// Keep the Docker fallback for sources that have not been imported into
+		// Hypeman yet. Once staged, the image is available under the requested
+		// target and can be pushed through the normal cached-image flow.
 		staged, stageErr := stageDockerImage(ctx, cmd, &client, source, target)
 		if stageErr != nil {
-			return fmt.Errorf("image %q was not found in Hypeman or Docker: %w", source, stageErr)
+			return fmt.Errorf("image %q was not found in Hypeman; stage it from Docker: %w", source, stageErr)
 		}
 		res = []byte(staged.RawJSON())
 	}
