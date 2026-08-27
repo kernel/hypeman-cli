@@ -26,8 +26,8 @@ var pushCmd = cli.Command{
 	Description: `Push images between Docker, Hypeman, and remote registries.
 
   hypeman push TARGET
-      Push a ready Hypeman image tagged TARGET to its remote registry. If the
-      image is not cached in Hypeman, fall back to staging the local Docker tag.
+      Push the local Docker image tagged TARGET to its remote registry. If
+      Docker does not have it, use the ready Hypeman image cached under TARGET.
 
   hypeman push IMAGE TARGET
       Push an image already in Hypeman to TARGET. Waits for completion.
@@ -48,9 +48,8 @@ Examples:
   hypeman tag alpine:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
   hypeman push 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
 
-  # Stage a local Docker tag, then push it to ECR
+  # Push a local Docker tag to ECR
   docker tag alpine:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
-  hypeman push local 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
   hypeman push 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
 
   # Push a cached Hypeman image directly to a different remote target

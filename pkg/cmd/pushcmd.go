@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
 	"github.com/tidwall/gjson"
@@ -82,9 +83,16 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 		return err
 	}
 
-	// Prefer an image already cached in Hypeman. This makes `hypeman tag` followed
-	// by `hypeman push TARGET` work without requiring a local Docker daemon.
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	if img, err := loadDockerImage(target); err == nil {
+		if _, err := stageLoadedDockerImage(ctx, cmd, &client, target, target, img); err != nil {
+			return fmt.Errorf("stage local Docker image %q: %w", target, err)
+		}
+		return runRemotePush(ctx, cmd, target, target)
+	}
+
+	// A cached Hypeman image is used when Docker does not have TARGET. This
+	// makes `hypeman tag` followed by `hypeman push TARGET` daemon-independent.
 	cachedImage, err := client.Images.Get(ctx, url.PathEscape(target))
 	if err == nil {
 		if err := waitForImageReady(ctx, &client, cachedImage); err != nil {
@@ -97,7 +105,7 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 	}
 
 	if _, err := stageDockerImage(ctx, cmd, &client, target, target); err != nil {
-		return fmt.Errorf("image %q was not found in Hypeman; stage it from Docker: %w", target, err)
+		return fmt.Errorf("stage local Docker image %q: %w", target, err)
 	}
 
 	return runRemotePush(ctx, cmd, target, target)
@@ -124,7 +132,10 @@ func stageDockerImage(ctx context.Context, cmd *cli.Command, client *hypeman.Cli
 	if err != nil {
 		return nil, err
 	}
+	return stageLoadedDockerImage(ctx, cmd, client, source, target, img)
+}
 
+func stageLoadedDockerImage(ctx context.Context, cmd *cli.Command, client *hypeman.Client, source, target string, img v1.Image) (*hypeman.Image, error) {
 	fmt.Fprintf(os.Stderr, "Staging local image %s in Hypeman...\n", source)
 	if err := uploadLocalImage(ctx, cmd, target, img); err != nil {
 		return nil, err
