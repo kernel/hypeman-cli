@@ -11,7 +11,7 @@ require (
 	github.com/google/go-containerregistry v0.20.7
 	github.com/gorilla/websocket v1.5.3
 	github.com/itchyny/json2yaml v0.1.4
-	github.com/kernel/hypeman-go v0.26.0
+	github.com/kernel/hypeman-go v0.26.1
 	github.com/knadh/koanf/parsers/yaml v1.1.0
 	github.com/knadh/koanf/providers/env v1.1.0
 	github.com/knadh/koanf/providers/file v1.2.1
@@ -91,3 +91,5 @@ require (
 )
 
 replace github.com/docker/cli v29.0.3+incompatible => github.com/docker/cli v29.2.0+incompatible
+
+replace github.com/docker/docker v28.5.2+incompatible => github.com/docker/docker v28.5.3-0.20260325120914-0afb41ce194c+incompatible
