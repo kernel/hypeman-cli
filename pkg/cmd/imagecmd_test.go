@@ -116,3 +116,18 @@ func TestTagCommandFallsBackToDockerWhenHypemanMisses(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "was not found in Hypeman; stage it from Docker")
 }
+
+func TestTagCommandPropagatesNotReady(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"code":"image_not_ready","message":"image is not ready"}`))
+	}))
+	defer server.Close()
+
+	err := Command.Run(context.Background(), []string{
+		"hypeman", "--base-url", server.URL,
+		"tag", "alpine:pending", "myapp:latest",
+	})
+	require.ErrorContains(t, err, "image is not ready")
+}
