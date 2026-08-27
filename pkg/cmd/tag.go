@@ -13,16 +13,11 @@ import (
 )
 
 var tagCmd = cli.Command{
-	Name:            "tag",
-	Usage:           "Create a local image tag",
-	ArgsUsage:       "<source> <target>",
-	Description:     "Create a local image tag in Hypeman without pulling or converting the image.",
-	Action:          handleTag,
-	HideHelpCommand: true,
-}
-
-type tagImageRequest struct {
-	Target string `json:"target"`
+	Name:        "tag",
+	Usage:       "Create a local image tag",
+	ArgsUsage:   "<source> <target>",
+	Description: "Create a local image tag in Hypeman without pulling or converting the image.",
+	Action:      handleTag,
 }
 
 func handleTag(ctx context.Context, cmd *cli.Command) error {
@@ -33,30 +28,32 @@ func handleTag(ctx context.Context, cmd *cli.Command) error {
 
 	source, target := args[0], args[1]
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	res, err := tagImage(ctx, cmd, &client, source, target)
+	if err != nil {
+		return err
+	}
 
-	var opts []option.RequestOption
+	return printTagResult(cmd, target, res)
+}
+
+func tagImage(ctx context.Context, cmd *cli.Command, client *hypeman.Client, source, target string) ([]byte, error) {
+	var res []byte
+	opts := []option.RequestOption{option.WithResponseBodyInto(&res)}
 	if cmd.Root().Bool("debug") {
 		opts = append(opts, debugMiddlewareOption)
 	}
 
-	var res []byte
-	opts = append(opts, option.WithResponseBodyInto(&res))
 	path := "/images/" + url.PathEscape(source) + "/tag"
-	if err := client.Post(ctx, path, tagImageRequest{Target: target}, nil, opts...); err != nil {
-		if !isNotFoundError(err) {
-			return err
-		}
-
-		// Keep the Docker fallback for sources that have not been imported into
-		// Hypeman yet. Once staged, the image is available under the requested
-		// target and can be pushed through the normal cached-image flow.
-		staged, stageErr := stageDockerImage(ctx, cmd, &client, source, target)
-		if stageErr != nil {
-			return fmt.Errorf("image %q was not found in Hypeman; stage it from Docker: %w", source, stageErr)
-		}
-		res = []byte(staged.RawJSON())
+	body := struct {
+		Target string `json:"target"`
+	}{Target: target}
+	if err := client.Post(ctx, path, body, nil, opts...); err != nil {
+		return nil, err
 	}
+	return res, nil
+}
 
+func printTagResult(cmd *cli.Command, target string, res []byte) error {
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
 	result := gjson.ParseBytes(res)

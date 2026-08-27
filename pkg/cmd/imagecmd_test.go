@@ -106,15 +106,15 @@ func TestTagCommandPostsEscapedSourceAndTarget(t *testing.T) {
 	assert.Contains(t, string(output), "docker.io/library/myapp:latest")
 }
 
-func TestTagCommandFallsBackToDockerWhenHypemanMisses(t *testing.T) {
+func TestTagCommandPropagatesNotFound(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	defer server.Close()
 
 	err := Command.Run(context.Background(), []string{
 		"hypeman", "--base-url", server.URL,
-		"tag", "not a valid image", "myapp:latest",
+		"tag", "alpine:missing", "myapp:latest",
 	})
-	require.ErrorContains(t, err, "was not found in Hypeman; stage it from Docker")
+	require.ErrorContains(t, err, "404")
 }
 
 func TestTagCommandPropagatesNotReady(t *testing.T) {
