@@ -34,7 +34,7 @@ func TestPushRepository(t *testing.T) {
 	assert.Equal(t, "registry.example.com/app", pushRepository("registry.example.com/app:v1"))
 }
 
-func TestPushTargetPrefersCachedHypemanImage(t *testing.T) {
+func TestPushTargetFallsBackToCachedHypemanImage(t *testing.T) {
 	var pushImage, pushTarget string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -70,6 +70,31 @@ func TestPushTargetPrefersCachedHypemanImage(t *testing.T) {
 
 	assert.Equal(t, "123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1", pushImage)
 	assert.Equal(t, pushImage, pushTarget)
+}
+
+func TestPushTargetErrorsWhenImageMissingEverywhere(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+
+	err := Command.Run(context.Background(), []string{
+		"hypeman", "--base-url", server.URL, "push",
+		"123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1",
+	})
+	require.ErrorContains(t, err, "not found in local Docker or the Hypeman cache")
+}
+
+func TestPushTargetPropagatesCachedImageFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"name":"123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1","digest":"sha256:test","status":"failed","error":"layer fetch failed","created_at":"2026-08-19T00:00:00Z"}`))
+	}))
+	defer server.Close()
+
+	err := Command.Run(context.Background(), []string{
+		"hypeman", "--base-url", server.URL, "push",
+		"123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1",
+	})
+	require.ErrorContains(t, err, "layer fetch failed")
 }
 
 func TestValidateRemotePushReferences(t *testing.T) {

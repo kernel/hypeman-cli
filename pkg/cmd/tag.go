@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
 	"github.com/tidwall/gjson"
@@ -25,43 +26,36 @@ func handleTag(ctx context.Context, cmd *cli.Command) error {
 	if len(args) != 2 {
 		return fmt.Errorf("source and target image references required\nUsage: hypeman tag <source> <target>")
 	}
-
 	source, target := args[0], args[1]
-	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
-	res, err := tagImage(ctx, cmd, &client, source, target)
-	if err != nil {
-		return err
+	for _, ref := range []struct{ label, value string }{{"source", source}, {"target", target}} {
+		if _, err := name.ParseReference(ref.value); err != nil {
+			return fmt.Errorf("invalid %s %q: %w", ref.label, ref.value, err)
+		}
 	}
 
-	return printTagResult(cmd, target, res)
-}
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 
-func tagImage(ctx context.Context, cmd *cli.Command, client *hypeman.Client, source, target string) ([]byte, error) {
-	var res []byte
-	opts := []option.RequestOption{option.WithResponseBodyInto(&res)}
+	var opts []option.RequestOption
 	if cmd.Root().Bool("debug") {
 		opts = append(opts, debugMiddlewareOption)
 	}
 
-	path := "/images/" + url.PathEscape(source) + "/tag"
+	var res []byte
+	opts = append(opts, option.WithResponseBodyInto(&res))
 	body := struct {
 		Target string `json:"target"`
 	}{Target: target}
-	if err := client.Post(ctx, path, body, nil, opts...); err != nil {
-		return nil, err
+	if err := client.Post(ctx, "/images/"+url.PathEscape(source)+"/tag", body, nil, opts...); err != nil {
+		return err
 	}
-	return res, nil
-}
 
-func printTagResult(cmd *cli.Command, target string, res []byte) error {
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
-	result := gjson.ParseBytes(res)
 	if format != "auto" {
-		return ShowJSON(os.Stdout, "tag", result, format, transform)
+		return ShowJSON(os.Stdout, "tag", gjson.ParseBytes(res), format, transform)
 	}
 
-	imageName := result.Get("name").String()
+	imageName := gjson.GetBytes(res, "name").String()
 	if imageName == "" {
 		imageName = target
 	}
