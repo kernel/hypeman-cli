@@ -42,6 +42,8 @@ func handleTag(ctx context.Context, cmd *cli.Command) error {
 
 	var res []byte
 	opts = append(opts, option.WithResponseBodyInto(&res))
+	// TODO: switch to a typed Images.Tag once the tag API from kernel/hypeman#453
+	// is generated into hypeman-go.
 	body := struct {
 		Target string `json:"target"`
 	}{Target: target}

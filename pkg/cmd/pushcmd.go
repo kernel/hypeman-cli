@@ -106,8 +106,10 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 	fmt.Fprintf(os.Stderr, "Docker image %s not available (%v); trying the Hypeman cache...\n", target, loadErr)
 	cachedImage, err := client.Images.Get(ctx, url.PathEscape(target))
 	if err == nil {
+		// A cached record that never became ready deserves a push-specific
+		// message; the shared helper's "image build failed" reads odd here.
 		if err := waitForImageReady(ctx, &client, cachedImage); err != nil {
-			return err
+			return fmt.Errorf("cached image %s is not ready: %w", target, err)
 		}
 		return runRemotePush(ctx, cmd, target, target)
 	}
