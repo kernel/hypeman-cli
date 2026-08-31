@@ -3,11 +3,14 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/kernel/hypeman-go"
+	"github.com/kernel/hypeman-go/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,6 +35,26 @@ func TestPushCommandStructure(t *testing.T) {
 
 func TestPushRepository(t *testing.T) {
 	assert.Equal(t, "registry.example.com/app", pushRepository("registry.example.com/app:v1"))
+}
+
+func TestWaitForImageRecordSkipsOlderDigest(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		digest := "sha256:old"
+		if requests > 1 {
+			digest = "sha256:new"
+		}
+		_, _ = fmt.Fprintf(w, `{"name":"registry.example.com/app:latest","digest":"%s","status":"ready","created_at":"2026-08-19T00:00:00Z"}`, digest)
+	}))
+	defer server.Close()
+
+	client := hypeman.NewClient(option.WithBaseURL(server.URL))
+	img, err := waitForImageRecord(context.Background(), &client, "registry.example.com/app:latest", "sha256:new")
+	require.NoError(t, err)
+	require.Equal(t, "sha256:new", img.Digest)
+	require.Equal(t, 2, requests)
 }
 
 func TestPushTargetFallsBackToCachedHypemanImage(t *testing.T) {

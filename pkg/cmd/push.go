@@ -108,7 +108,8 @@ func pushLocalImage(ctx context.Context, cmd *cli.Command, sourceImage, targetNa
 	if err != nil {
 		return err
 	}
-	return uploadLocalImage(ctx, cmd, targetName, img)
+	_, err = uploadLocalImage(ctx, cmd, targetName, img)
+	return err
 }
 
 func loadDockerImage(image string) (v1.Image, error) {
@@ -123,18 +124,18 @@ func loadDockerImage(image string) (v1.Image, error) {
 	return img, nil
 }
 
-func uploadLocalImage(ctx context.Context, cmd *cli.Command, targetName string, img v1.Image) error {
+func uploadLocalImage(ctx context.Context, cmd *cli.Command, targetName string, img v1.Image) (string, error) {
 	baseURL := resolveBaseURL(cmd)
 
 	parsedURL, err := url.Parse(baseURL)
 	if err != nil {
-		return fmt.Errorf("invalid base URL: %w", err)
+		return "", fmt.Errorf("invalid base URL: %w", err)
 	}
 	if parsedURL.Host == "" {
-		return fmt.Errorf("invalid base URL %q: missing host", baseURL)
+		return "", fmt.Errorf("invalid base URL %q: missing host", baseURL)
 	}
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return fmt.Errorf("invalid base URL %q: scheme must be http or https", baseURL)
+		return "", fmt.Errorf("invalid base URL %q: scheme must be http or https", baseURL)
 	}
 
 	registryHost := parsedURL.Host
@@ -148,7 +149,7 @@ func uploadLocalImage(ctx context.Context, cmd *cli.Command, targetName string, 
 	}
 	dstRef, err := name.ParseReference(targetRef, parseOptions...)
 	if err != nil {
-		return fmt.Errorf("invalid target: %w", err)
+		return "", fmt.Errorf("invalid target: %w", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "The push refers to repository [%s]\n", dstRef.Context().Name())
@@ -178,20 +179,20 @@ func uploadLocalImage(ctx context.Context, cmd *cli.Command, targetName string, 
 	close(progressStop)
 	<-progressDone
 	if err != nil {
-		return fmt.Errorf("push failed: %w", err)
+		return "", fmt.Errorf("push failed: %w", err)
 	}
 
 	digest, err := img.Digest()
 	if err != nil {
-		return fmt.Errorf("read pushed image digest: %w", err)
+		return "", fmt.Errorf("read pushed image digest: %w", err)
 	}
 	rawManifest, err := img.RawManifest()
 	if err != nil {
-		return fmt.Errorf("read pushed image manifest: %w", err)
+		return "", fmt.Errorf("read pushed image manifest: %w", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "%s: digest: %s size: %d\n", dstRef.Identifier(), digest, len(rawManifest))
-	return nil
+	return digest.String(), nil
 }
 
 // renderPushProgress consumes go-containerregistry's aggregate byte updates.

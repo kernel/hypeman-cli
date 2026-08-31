@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	dockerclient "github.com/docker/docker/client"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
@@ -87,10 +88,11 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 	img, loadErr := loadDockerImage(target)
 	if loadErr == nil {
 		fmt.Fprintf(os.Stderr, "Staging local image %s in Hypeman...\n", target)
-		if err := uploadLocalImage(ctx, cmd, target, img); err != nil {
+		digest, err := uploadLocalImage(ctx, cmd, target, img)
+		if err != nil {
 			return fmt.Errorf("upload local Docker image %q: %w", target, err)
 		}
-		imported, err := waitForImageRecord(ctx, &client, target)
+		imported, err := waitForImageRecord(ctx, &client, target, digest)
 		if err != nil {
 			return err
 		}
@@ -98,6 +100,9 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 			return err
 		}
 		return runRemotePush(ctx, cmd, target, target)
+	}
+	if !dockerclient.IsErrNotFound(loadErr) {
+		return fmt.Errorf("load local Docker image %q: %w", target, loadErr)
 	}
 
 	// Docker does not have TARGET, so fall back to a cached Hypeman image.
@@ -136,14 +141,17 @@ func validateTaggedImageReference(target string) error {
 	return nil
 }
 
-func waitForImageRecord(ctx context.Context, client *hypeman.Client, imageName string) (*hypeman.Image, error) {
+func waitForImageRecord(ctx context.Context, client *hypeman.Client, imageName, expectedDigest string) (*hypeman.Image, error) {
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		img, err := client.Images.Get(ctx, url.PathEscape(imageName))
 		if err == nil {
-			return img, nil
+			if img.Digest == expectedDigest {
+				return img, nil
+			}
+			continue
 		}
 		if !isNotFoundError(err) {
 			return nil, fmt.Errorf("get staged image %s: %w", imageName, err)
