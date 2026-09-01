@@ -78,7 +78,7 @@ var pushGetCmd = cli.Command{
 }
 
 func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string) error {
-	if err := validateRemotePushTarget(target); err != nil {
+	if err := validateTaggedImageReference(target); err != nil {
 		return err
 	}
 
@@ -107,7 +107,10 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 	return runRemotePush(ctx, cmd, target, target)
 }
 
-func validateRemotePushTarget(target string) error {
+// validateTaggedImageReference rejects references that a tag-producing
+// operation cannot use as a destination: unparseable ones, and digest or
+// tagless references that give the new content nowhere to live.
+func validateTaggedImageReference(target string) error {
 	if _, err := name.ParseReference(target); err != nil {
 		return fmt.Errorf("invalid target %q: %w", target, err)
 	}
@@ -206,7 +209,7 @@ func validateRemotePushReferences(image, target string) error {
 	if _, err := name.ParseReference(image); err != nil {
 		return fmt.Errorf("invalid source image %q: %w", image, err)
 	}
-	return validateRemotePushTarget(target)
+	return validateTaggedImageReference(target)
 }
 
 func pushPassword(cmd *cli.Command) (string, error) {
