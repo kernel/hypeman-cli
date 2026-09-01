@@ -40,24 +40,20 @@ func handleTag(ctx context.Context, cmd *cli.Command) error {
 		opts = append(opts, debugMiddlewareOption)
 	}
 
-	var res []byte
-	opts = append(opts, option.WithResponseBodyInto(&res))
-	// TODO: switch to a typed Images.Tag once the tag API from kernel/hypeman#453
-	// is generated into hypeman-go.
-	body := struct {
-		Target string `json:"target"`
-	}{Target: target}
-	if err := client.Post(ctx, "/images/"+url.PathEscape(source)+"/tag", body, nil, opts...); err != nil {
+	res, err := client.Images.Tag(ctx, url.PathEscape(source), hypeman.ImageTagParams{
+		TagImageRequest: hypeman.TagImageRequestParam{Target: target},
+	}, opts...)
+	if err != nil {
 		return err
 	}
 
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
 	if format != "auto" {
-		return ShowJSON(os.Stdout, "tag", gjson.ParseBytes(res), format, transform)
+		return ShowJSON(os.Stdout, "tag", gjson.Parse(res.RawJSON()), format, transform)
 	}
 
-	imageName := gjson.GetBytes(res, "name").String()
+	imageName := res.Name
 	if imageName == "" {
 		imageName = target
 	}
