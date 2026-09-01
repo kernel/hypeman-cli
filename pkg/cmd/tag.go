@@ -27,10 +27,11 @@ func handleTag(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("source and target image references required\nUsage: hypeman tag <source> <target>")
 	}
 	source, target := args[0], args[1]
-	for _, ref := range []struct{ label, value string }{{"source", source}, {"target", target}} {
-		if _, err := name.ParseReference(ref.value); err != nil {
-			return fmt.Errorf("invalid %s %q: %w", ref.label, ref.value, err)
-		}
+	if _, err := name.ParseReference(source); err != nil {
+		return fmt.Errorf("invalid source %q: %w", source, err)
+	}
+	if err := validateTaggedImageReference(target); err != nil {
+		return err
 	}
 
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)

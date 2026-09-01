@@ -54,6 +54,13 @@ func TestValidateTaggedImageReference(t *testing.T) {
 	assert.ErrorContains(t, validateTaggedImageReference("not valid"), "invalid target")
 }
 
+func TestTagCommandRejectsTaglessTarget(t *testing.T) {
+	err := Command.Run(context.Background(), []string{
+		"hypeman", "tag", "builds/job:latest", "myapp",
+	})
+	require.ErrorContains(t, err, "explicit tag")
+}
+
 func TestTagCommandPostsEscapedSourceAndTarget(t *testing.T) {
 	var method, path, target string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -36,6 +36,11 @@ func TestPushRepository(t *testing.T) {
 	assert.Equal(t, "registry.example.com/app", pushRepository("registry.example.com/app:v1"))
 }
 
+func TestDigestReferenceForTaggedImage(t *testing.T) {
+	assert.Equal(t, "registry.example.com:5000/app@sha256:abc", digestReferenceForTaggedImage(
+		"registry.example.com:5000/app:v1", "sha256:abc"))
+}
+
 func TestWaitForImageRecordAcceptsConvertedDigest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

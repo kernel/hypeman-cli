@@ -85,18 +85,34 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
 
+	var opts []option.RequestOption
+	if cmd.Root().Bool("debug") {
+		opts = append(opts, debugMiddlewareOption)
+	}
+
 	img, loadErr := loadDockerImage(target)
 	if loadErr == nil {
+		digest, err := img.Digest()
+		if err != nil {
+			return fmt.Errorf("read local image digest: %w", err)
+		}
+		stagedName := digestReferenceForTaggedImage(target, digest.String())
+
 		fmt.Fprintf(os.Stderr, "Staging local image %s in Hypeman...\n", target)
-		if _, err := uploadLocalImage(ctx, cmd, target, img); err != nil {
+		if _, err := uploadLocalImage(ctx, cmd, stagedName, img); err != nil {
 			return fmt.Errorf("upload local Docker image %q: %w", target, err)
 		}
-		imported, err := waitForImageRecord(ctx, &client, target)
+		imported, err := waitForImageRecord(ctx, &client, stagedName)
 		if err != nil {
 			return err
 		}
 		if err := waitForImageReady(ctx, &client, imported); err != nil {
 			return err
+		}
+		if _, err := client.Images.Tag(ctx, url.PathEscape(stagedName), hypeman.ImageTagParams{
+			TagImageRequest: hypeman.TagImageRequestParam{Target: target},
+		}, opts...); err != nil {
+			return fmt.Errorf("tag staged image %q as %q: %w", stagedName, target, err)
 		}
 		return runRemotePush(ctx, cmd, target, target)
 	}
@@ -122,6 +138,11 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 	}
 
 	return fmt.Errorf("image %q not found in local Docker or the Hypeman cache; use hypeman tag <source> <target> first", target)
+}
+
+func digestReferenceForTaggedImage(target, digest string) string {
+	lastColon := strings.LastIndex(target, ":")
+	return target[:lastColon] + "@" + digest
 }
 
 // validateTaggedImageReference rejects references that a tag-producing
