@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	dockerclient "github.com/docker/docker/client"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
@@ -82,29 +83,69 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 		return err
 	}
 
-	// The one-argument form follows Docker's local-tag flow: TARGET must be
-	// present in the local Docker daemon before it can be staged and pushed.
-	// Cached Hypeman images use the explicit IMAGE TARGET form instead.
-	img, err := loadDockerImage(target)
-	if err != nil {
-		return fmt.Errorf("load local Docker image %q: %w; tag it first or use hypeman push <image> <target> for a cached Hypeman image", target, err)
-	}
-
-	fmt.Fprintf(os.Stderr, "Staging local image %s in Hypeman...\n", target)
-	if err := uploadLocalImage(ctx, cmd, target, img); err != nil {
-		return err
-	}
-
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
-	imported, err := waitForImageRecord(ctx, &client, target)
-	if err != nil {
-		return err
-	}
-	if err := waitForImageReady(ctx, &client, imported); err != nil {
-		return err
+
+	var opts []option.RequestOption
+	if cmd.Root().Bool("debug") {
+		opts = append(opts, debugMiddlewareOption)
 	}
 
-	return runRemotePush(ctx, cmd, target, target)
+	img, loadErr := loadDockerImage(target)
+	if loadErr == nil {
+		digest, err := img.Digest()
+		if err != nil {
+			return fmt.Errorf("read local image digest: %w", err)
+		}
+		stagedName := stagingReferenceForTaggedImage(target, digest.String())
+
+		fmt.Fprintf(os.Stderr, "Staging local image %s in Hypeman...\n", target)
+		if _, err := uploadLocalImage(ctx, cmd, stagedName, img); err != nil {
+			return fmt.Errorf("upload local Docker image %q: %w", target, err)
+		}
+		imported, err := waitForImageRecord(ctx, &client, stagedName)
+		if err != nil {
+			return err
+		}
+		if err := waitForImageReady(ctx, &client, imported); err != nil {
+			return err
+		}
+		if _, err := client.Images.Tag(ctx, url.PathEscape(stagedName), hypeman.ImageTagParams{
+			TagImageRequest: hypeman.TagImageRequestParam{Target: target},
+		}, opts...); err != nil {
+			return fmt.Errorf("tag staged image %q as %q: %w", stagedName, target, err)
+		}
+		if err := client.Images.Delete(ctx, url.PathEscape(stagedName), opts...); err != nil && !isNotFoundError(err) {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clean up staged image %q: %v\n", stagedName, err)
+		}
+		return runRemotePush(ctx, cmd, target, target)
+	}
+	if !dockerclient.IsErrNotFound(loadErr) {
+		return fmt.Errorf("load local Docker image %q: %w", target, loadErr)
+	}
+
+	// Docker does not have TARGET, so fall back to a cached Hypeman image.
+	// This keeps `hypeman tag` followed by `hypeman push TARGET` working when
+	// the Docker daemon does not hold the same tag.
+	fmt.Fprintf(os.Stderr, "Docker image %s not available (%v); trying the Hypeman cache...\n", target, loadErr)
+	cachedImage, err := client.Images.Get(ctx, url.PathEscape(target))
+	if err == nil {
+		// A cached record that never became ready deserves a push-specific
+		// message; the shared helper's "image build failed" reads odd here.
+		if err := waitForImageReady(ctx, &client, cachedImage); err != nil {
+			return fmt.Errorf("cached image %s is not ready: %w", target, err)
+		}
+		return runRemotePush(ctx, cmd, target, target)
+	}
+	if !isNotFoundError(err) {
+		return fmt.Errorf("get cached image %s: %w", target, err)
+	}
+
+	return fmt.Errorf("image %q not found in local Docker or the Hypeman cache; use hypeman tag <source> <target> first", target)
+}
+
+func stagingReferenceForTaggedImage(target, digest string) string {
+	lastColon := strings.LastIndex(target, ":")
+	return target[:lastColon] + ":hypeman-staged-" + strings.TrimPrefix(digest, "sha256:")
 }
 
 // validateTaggedImageReference rejects references that a tag-producing
@@ -123,6 +164,8 @@ func validateTaggedImageReference(target string) error {
 	return nil
 }
 
+// waitForImageRecord waits for the server-side record created by the registry upload.
+// The server converts the Docker manifest, so its image digest is expected to differ.
 func waitForImageRecord(ctx context.Context, client *hypeman.Client, imageName string) (*hypeman.Image, error) {
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()

@@ -1,8 +1,15 @@
 package cmd
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/kernel/hypeman-go"
+	"github.com/kernel/hypeman-go/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,6 +34,87 @@ func TestPushCommandStructure(t *testing.T) {
 
 func TestPushRepository(t *testing.T) {
 	assert.Equal(t, "registry.example.com/app", pushRepository("registry.example.com/app:v1"))
+}
+
+func TestStagingReferenceForTaggedImage(t *testing.T) {
+	assert.Equal(t, "registry.example.com:5000/app:hypeman-staged-abc", stagingReferenceForTaggedImage(
+		"registry.example.com:5000/app:v1", "sha256:abc"))
+}
+
+func TestWaitForImageRecordAcceptsConvertedDigest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"name":"registry.example.com/app:latest","digest":"sha256:converted","status":"ready","created_at":"2026-08-19T00:00:00Z"}`))
+	}))
+	defer server.Close()
+
+	client := hypeman.NewClient(option.WithBaseURL(server.URL))
+	img, err := waitForImageRecord(context.Background(), &client, "registry.example.com/app:latest")
+	require.NoError(t, err)
+	require.Equal(t, "sha256:converted", img.Digest)
+}
+
+func TestPushTargetFallsBackToCachedHypemanImage(t *testing.T) {
+	var pushImage, pushTarget string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/images/"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"name":"123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1","digest":"sha256:test","status":"ready","created_at":"2026-08-19T00:00:00Z"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/pushes":
+			var body struct {
+				Image  string `json:"image"`
+				Target string `json:"target"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			pushImage = body.Image
+			pushTarget = body.Target
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"push-1","created_at":"2026-08-19T00:00:00Z","digest":"sha256:test","image":"123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1","status":"pushed","target":"123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	err := Command.Run(context.Background(), []string{
+		"hypeman", "--base-url", server.URL, "push",
+		"123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t, "123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1", pushImage)
+	assert.Equal(t, pushImage, pushTarget)
+}
+
+func TestPushTargetErrorsWhenImageMissingEverywhere(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+
+	err := Command.Run(context.Background(), []string{
+		"hypeman", "--base-url", server.URL, "push",
+		"123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1",
+	})
+	require.ErrorContains(t, err, "not found in local Docker or the Hypeman cache")
+}
+
+func TestPushTargetPropagatesCachedImageFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"name":"123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1","digest":"sha256:test","status":"failed","error":"layer fetch failed","created_at":"2026-08-19T00:00:00Z"}`))
+	}))
+	defer server.Close()
+
+	err := Command.Run(context.Background(), []string{
+		"hypeman", "--base-url", server.URL, "push",
+		"123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1",
+	})
+	require.ErrorContains(t, err, "layer fetch failed")
 }
 
 func TestValidateRemotePushReferences(t *testing.T) {

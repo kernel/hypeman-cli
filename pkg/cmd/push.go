@@ -26,8 +26,8 @@ var pushCmd = cli.Command{
 	Description: `Push images between Docker, Hypeman, and remote registries.
 
   hypeman push TARGET
-      Push a local Docker image tagged TARGET to its remote registry. The CLI
-      stages it in Hypeman first.
+      Push the local Docker image tagged TARGET to its remote registry. If
+      Docker does not have it, use the ready Hypeman image cached under TARGET.
 
   hypeman push IMAGE TARGET
       Push an image already in Hypeman to TARGET. Waits for completion.
@@ -44,11 +44,15 @@ Push jobs can be inspected while they run:
   hypeman push inspect <id>
 
 Examples:
+  # Retag and push a cached Hypeman image to ECR
+  hypeman tag alpine:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
+  hypeman push 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
+
   # Push a local Docker tag to ECR
   docker tag alpine:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
   hypeman push 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
 
-  # Push a cached Hypeman image to ECR
+  # Push a cached Hypeman image directly to a different remote target
   hypeman push alpine:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:v1
 
   # Push with credentials read from stdin
@@ -104,7 +108,8 @@ func pushLocalImage(ctx context.Context, cmd *cli.Command, sourceImage, targetNa
 	if err != nil {
 		return err
 	}
-	return uploadLocalImage(ctx, cmd, targetName, img)
+	_, err = uploadLocalImage(ctx, cmd, targetName, img)
+	return err
 }
 
 func loadDockerImage(image string) (v1.Image, error) {
@@ -119,18 +124,18 @@ func loadDockerImage(image string) (v1.Image, error) {
 	return img, nil
 }
 
-func uploadLocalImage(ctx context.Context, cmd *cli.Command, targetName string, img v1.Image) error {
+func uploadLocalImage(ctx context.Context, cmd *cli.Command, targetName string, img v1.Image) (string, error) {
 	baseURL := resolveBaseURL(cmd)
 
 	parsedURL, err := url.Parse(baseURL)
 	if err != nil {
-		return fmt.Errorf("invalid base URL: %w", err)
+		return "", fmt.Errorf("invalid base URL: %w", err)
 	}
 	if parsedURL.Host == "" {
-		return fmt.Errorf("invalid base URL %q: missing host", baseURL)
+		return "", fmt.Errorf("invalid base URL %q: missing host", baseURL)
 	}
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return fmt.Errorf("invalid base URL %q: scheme must be http or https", baseURL)
+		return "", fmt.Errorf("invalid base URL %q: scheme must be http or https", baseURL)
 	}
 
 	registryHost := parsedURL.Host
@@ -144,7 +149,7 @@ func uploadLocalImage(ctx context.Context, cmd *cli.Command, targetName string, 
 	}
 	dstRef, err := name.ParseReference(targetRef, parseOptions...)
 	if err != nil {
-		return fmt.Errorf("invalid target: %w", err)
+		return "", fmt.Errorf("invalid target: %w", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "The push refers to repository [%s]\n", dstRef.Context().Name())
@@ -174,20 +179,20 @@ func uploadLocalImage(ctx context.Context, cmd *cli.Command, targetName string, 
 	close(progressStop)
 	<-progressDone
 	if err != nil {
-		return fmt.Errorf("push failed: %w", err)
+		return "", fmt.Errorf("push failed: %w", err)
 	}
 
 	digest, err := img.Digest()
 	if err != nil {
-		return fmt.Errorf("read pushed image digest: %w", err)
+		return "", fmt.Errorf("read pushed image digest: %w", err)
 	}
 	rawManifest, err := img.RawManifest()
 	if err != nil {
-		return fmt.Errorf("read pushed image manifest: %w", err)
+		return "", fmt.Errorf("read pushed image manifest: %w", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "%s: digest: %s size: %d\n", dstRef.Identifier(), digest, len(rawManifest))
-	return nil
+	return digest.String(), nil
 }
 
 // renderPushProgress consumes go-containerregistry's aggregate byte updates.
