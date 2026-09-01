@@ -88,11 +88,10 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 	img, loadErr := loadDockerImage(target)
 	if loadErr == nil {
 		fmt.Fprintf(os.Stderr, "Staging local image %s in Hypeman...\n", target)
-		digest, err := uploadLocalImage(ctx, cmd, target, img)
-		if err != nil {
+		if _, err := uploadLocalImage(ctx, cmd, target, img); err != nil {
 			return fmt.Errorf("upload local Docker image %q: %w", target, err)
 		}
-		imported, err := waitForImageRecord(ctx, &client, target, digest)
+		imported, err := waitForImageRecord(ctx, &client, target)
 		if err != nil {
 			return err
 		}
@@ -141,17 +140,16 @@ func validateTaggedImageReference(target string) error {
 	return nil
 }
 
-func waitForImageRecord(ctx context.Context, client *hypeman.Client, imageName, expectedDigest string) (*hypeman.Image, error) {
+// waitForImageRecord waits for the server-side record created by the registry upload.
+// The server converts the Docker manifest, so its image digest is expected to differ.
+func waitForImageRecord(ctx context.Context, client *hypeman.Client, imageName string) (*hypeman.Image, error) {
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		img, err := client.Images.Get(ctx, url.PathEscape(imageName))
 		if err == nil {
-			if img.Digest == expectedDigest {
-				return img, nil
-			}
-			continue
+			return img, nil
 		}
 		if !isNotFoundError(err) {
 			return nil, fmt.Errorf("get staged image %s: %w", imageName, err)
