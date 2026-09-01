@@ -20,6 +20,7 @@ var imageCmd = cli.Command{
 		&imageCreateCmd,
 		&imageListCmd,
 		&imageGetCmd,
+		&imageTagCmd,
 		&imageDeleteCmd,
 	},
 	HideHelpCommand: true,
@@ -57,6 +58,19 @@ var imageGetCmd = cli.Command{
 	Usage:           "Get image details",
 	ArgsUsage:       "<name>",
 	Action:          handleImageGet,
+	HideHelpCommand: true,
+}
+
+var imageTagCmd = cli.Command{
+	Name:      "tag",
+	Usage:     "Create or update a local image tag",
+	ArgsUsage: "<source> <target>",
+	Description: `Point a new tag at an image that is already stored locally.
+
+<source> is an existing image name or digest, and <target> is an OCI reference
+with an explicit tag. The tag reuses the source content instead of pulling the
+image again.`,
+	Action:          handleImageTag,
 	HideHelpCommand: true,
 }
 
@@ -170,6 +184,9 @@ func handleImageCreateLike(ctx context.Context, cmd *cli.Command, usageLine, out
 	for _, malformed := range malformedTags {
 		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
 	}
+	if credentials, ok := registryCredentialsFromCommand(cmd); ok {
+		params.Credentials = credentials
+	}
 
 	var opts []option.RequestOption
 	if cmd.Root().Bool("debug") {
@@ -199,7 +216,7 @@ func handleImageCreateLike(ctx context.Context, cmd *cli.Command, usageLine, out
 }
 
 func imageCreateFlags() []cli.Flag {
-	return []cli.Flag{
+	flags := []cli.Flag{
 		&cli.StringSliceFlag{
 			Name:  "tag",
 			Usage: "Set image tag key-value pair (KEY=VALUE, can be repeated)",
@@ -209,6 +226,7 @@ func imageCreateFlags() []cli.Flag {
 			Usage: `Target platform as os/arch[/variant] (e.g., "linux/amd64"). Defaults to the host platform`,
 		},
 	}
+	return append(flags, registryCredentialFlags()...)
 }
 
 func buildImageNewParams(name string, tagSpecs []string, platform string) (hypeman.ImageNewParams, []string) {
@@ -253,6 +271,53 @@ func handleImageGet(ctx context.Context, cmd *cli.Command) error {
 
 	obj := gjson.ParseBytes(res)
 	return ShowJSON(os.Stdout, "image get", obj, format, transform)
+}
+
+func handleImageTag(ctx context.Context, cmd *cli.Command) error {
+	args := cmd.Args().Slice()
+	if len(args) < 2 {
+		return fmt.Errorf("source image and target reference required\nUsage: hypeman image tag <source> <target>")
+	}
+
+	source := args[0]
+	target := args[1]
+
+	if err := validateTaggedImageReference(target); err != nil {
+		return err
+	}
+
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+
+	var opts []option.RequestOption
+	if cmd.Root().Bool("debug") {
+		opts = append(opts, debugMiddlewareOption)
+	}
+
+	params := hypeman.ImageTagParams{
+		TagImageRequest: hypeman.TagImageRequestParam{Target: target},
+	}
+
+	format := cmd.Root().String("format")
+	transform := cmd.Root().String("transform")
+
+	if format != "auto" {
+		var res []byte
+		opts = append(opts, option.WithResponseBodyInto(&res))
+		_, err := client.Images.Tag(ctx, url.PathEscape(source), params, opts...)
+		if err != nil {
+			return err
+		}
+		obj := gjson.ParseBytes(res)
+		return ShowJSON(os.Stdout, "image tag", obj, format, transform)
+	}
+
+	tagged, err := client.Images.Tag(ctx, url.PathEscape(source), params, opts...)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(tagged.Name)
+	return nil
 }
 
 func handleImageDelete(ctx context.Context, cmd *cli.Command) error {

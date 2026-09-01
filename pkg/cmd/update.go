@@ -20,11 +20,13 @@ var updateCmd = cli.Command{
 Currently supported:
   hypeman update auto-standby <instance> --enabled --idle-timeout 10m
   hypeman update egress-credentials <instance> --env KEY=VALUE
+  hypeman update expiration <instance> --ttl 2h
   hypeman update health-check <instance> --type http --http-port 8080
   hypeman update restart-policy <instance> --policy on_failure --max-attempts 5`,
 	Commands: []*cli.Command{
 		&updateAutoStandbyCmd,
 		&updateEgressCredentialsCmd,
+		&updateExpirationCmd,
 		&updateHealthCheckCmd,
 		&updateRestartPolicyCmd,
 	},
@@ -69,6 +71,24 @@ var updateEgressCredentialsCmd = cli.Command{
 		},
 	},
 	Action:          handleUpdate,
+	HideHelpCommand: true,
+}
+
+var updateExpirationCmd = cli.Command{
+	Name:      "expiration",
+	Usage:     "Update the automatic expiration deadline for an instance",
+	ArgsUsage: "<instance>",
+	Description: `Set or clear the automatic expiration deadline for an instance.
+
+TTL values are relative to when the update is committed, and the API rejects
+expiration updates made after the current deadline has already passed.
+
+Examples:
+  hypeman update expiration my-instance --ttl 2h
+  hypeman update expiration my-instance --expires-at 2026-01-02T15:04:05Z
+  hypeman update expiration my-instance --ttl 0s`,
+	Flags:           expirationFlags(""),
+	Action:          handleUpdateExpiration,
 	HideHelpCommand: true,
 }
 
@@ -134,6 +154,60 @@ func handleUpdateAutoStandby(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "Updating auto-standby for %s...\n", args[0])
+
+	instance, err := client.Instances.Update(ctx, instanceID, params, opts...)
+	if err != nil {
+		return err
+	}
+	fmt.Println(instance.ID)
+	return nil
+}
+
+func handleUpdateExpiration(ctx context.Context, cmd *cli.Command) error {
+	args := cmd.Args().Slice()
+	if len(args) < 1 {
+		return fmt.Errorf("instance ID or name required\nUsage: hypeman update expiration <instance> [flags]")
+	}
+
+	expiration, set, err := parseExpirationInput(cmd, "")
+	if err != nil {
+		return err
+	}
+	if !set {
+		return fmt.Errorf("one of --ttl or --expires-at is required")
+	}
+
+	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
+	instanceID, err := ResolveInstance(ctx, &client, args[0])
+	if err != nil {
+		return err
+	}
+
+	params := hypeman.InstanceUpdateParams{
+		Ttl:       expiration.TTL,
+		ExpiresAt: expiration.ExpiresAt,
+	}
+
+	var opts []option.RequestOption
+	if cmd.Root().Bool("debug") {
+		opts = append(opts, debugMiddlewareOption)
+	}
+
+	format := cmd.Root().String("format")
+	transform := cmd.Root().String("transform")
+
+	if format != "auto" {
+		var res []byte
+		opts = append(opts, option.WithResponseBodyInto(&res))
+		_, err := client.Instances.Update(ctx, instanceID, params, opts...)
+		if err != nil {
+			return err
+		}
+		obj := gjson.ParseBytes(res)
+		return ShowJSON(os.Stdout, "update expiration", obj, format, transform)
+	}
+
+	fmt.Fprintf(os.Stderr, "Updating expiration for %s...\n", args[0])
 
 	instance, err := client.Instances.Update(ctx, instanceID, params, opts...)
 	if err != nil {

@@ -18,33 +18,24 @@ import (
 )
 
 func pushRemoteFlags() []cli.Flag {
-	return []cli.Flag{
+	flags := []cli.Flag{
 		&cli.BoolFlag{
 			Name:  "insecure",
 			Usage: "Allow pushing to plain-HTTP registries",
 		},
-		&cli.StringFlag{
-			Name:  "username",
-			Usage: "Registry username",
-		},
-		&cli.StringFlag{
-			Name:  "password",
-			Usage: "Registry password or access token",
-		},
+	}
+	flags = append(flags, registryCredentialFlags()...)
+	return append(flags,
 		&cli.BoolFlag{
 			Name:  "password-stdin",
 			Usage: "Read the registry password from stdin",
-		},
-		&cli.StringFlag{
-			Name:  "registry-token",
-			Usage: "Bearer token for an Authorization header",
 		},
 		&cli.BoolFlag{
 			Name:    "detach",
 			Aliases: []string{"d"},
 			Usage:   "Return after queueing the push",
 		},
-	}
+	)
 }
 
 var pushCreateCmd = cli.Command{
@@ -87,7 +78,7 @@ var pushGetCmd = cli.Command{
 }
 
 func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string) error {
-	if err := validateRemotePushTarget(target); err != nil {
+	if err := validateTaggedImageReference(target); err != nil {
 		return err
 	}
 
@@ -116,7 +107,10 @@ func handleRemotePushTarget(ctx context.Context, cmd *cli.Command, target string
 	return runRemotePush(ctx, cmd, target, target)
 }
 
-func validateRemotePushTarget(target string) error {
+// validateTaggedImageReference rejects references that a tag-producing
+// operation cannot use as a destination: unparseable ones, and digest or
+// tagless references that give the new content nowhere to live.
+func validateTaggedImageReference(target string) error {
 	if _, err := name.ParseReference(target); err != nil {
 		return fmt.Errorf("invalid target %q: %w", target, err)
 	}
@@ -215,7 +209,7 @@ func validateRemotePushReferences(image, target string) error {
 	if _, err := name.ParseReference(image); err != nil {
 		return fmt.Errorf("invalid source image %q: %w", image, err)
 	}
-	return validateRemotePushTarget(target)
+	return validateTaggedImageReference(target)
 }
 
 func pushPassword(cmd *cli.Command) (string, error) {
@@ -357,21 +351,7 @@ func buildPushNewParams(image, target string, insecure bool, username, password,
 		params.CreatePushRequest.Insecure = hypeman.Opt(true)
 	}
 
-	credentials := hypeman.PushCredentialsParam{}
-	haveCredentials := false
-	if username != "" {
-		credentials.Username = hypeman.Opt(username)
-		haveCredentials = true
-	}
-	if password != "" {
-		credentials.Password = hypeman.Opt(password)
-		haveCredentials = true
-	}
-	if registryToken != "" {
-		credentials.RegistryToken = hypeman.Opt(registryToken)
-		haveCredentials = true
-	}
-	if haveCredentials {
+	if credentials, ok := buildRegistryCredentials(username, password, registryToken); ok {
 		params.CreatePushRequest.Credentials = credentials
 	}
 

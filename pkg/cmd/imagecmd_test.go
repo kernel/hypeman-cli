@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,4 +37,13 @@ func TestBuildImageNewParamsPlatform(t *testing.T) {
 func TestPlatformOrDash(t *testing.T) {
 	assert.Equal(t, "linux/amd64", platformOrDash("linux/amd64"))
 	assert.Equal(t, "-", platformOrDash(""))
+}
+
+func TestValidateTaggedImageReference(t *testing.T) {
+	assert.NoError(t, validateTaggedImageReference("registry.example.com/app:v1"))
+	assert.NoError(t, validateTaggedImageReference("nginx:stable"))
+	assert.ErrorContains(t, validateTaggedImageReference("registry.example.com/app"), "explicit tag")
+	assert.ErrorContains(t, validateTaggedImageReference(
+		"registry.example.com/app@sha256:"+strings.Repeat("a", 64)), "explicit tag")
+	assert.ErrorContains(t, validateTaggedImageReference("not valid"), "invalid target")
 }

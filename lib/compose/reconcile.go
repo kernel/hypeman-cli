@@ -320,7 +320,7 @@ func (r *Runner) applyDelete(ctx context.Context, action *Action) error {
 			return err
 		}
 	case "instance":
-		if err := r.client.Instances.Delete(ctx, action.instanceID, r.opts...); err != nil && !isHTTPNotFound(err) {
+		if err := r.client.Instances.Delete(ctx, action.instanceID, hypeman.InstanceDeleteParams{}, r.opts...); err != nil && !isHTTPNotFound(err) {
 			return err
 		}
 	case "volume":
@@ -382,7 +382,7 @@ func (r *Runner) applyReplace(ctx context.Context, action *Action, opts UpOption
 	switch action.Type {
 	case "instance":
 		if action.instanceID != "" {
-			if err := r.client.Instances.Delete(ctx, action.instanceID, r.opts...); err != nil && !isHTTPNotFound(err) {
+			if err := r.client.Instances.Delete(ctx, action.instanceID, hypeman.InstanceDeleteParams{}, r.opts...); err != nil && !isHTTPNotFound(err) {
 				return err
 			}
 		}

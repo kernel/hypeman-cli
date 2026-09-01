@@ -23,6 +23,11 @@ var rmCmd = cli.Command{
 			Name:  "all",
 			Usage: "Remove all instances (stopped only, unless --force)",
 		},
+		&cli.BoolFlag{
+			Name:  "graceful-shutdown",
+			Usage: "Attempt graceful guest shutdown before deleting the instance",
+			Value: true,
+		},
 	},
 	Action:          handleRm,
 	HideHelpCommand: true,
@@ -35,6 +40,10 @@ func handleRm(ctx context.Context, cmd *cli.Command) error {
 
 	if !all && len(args) < 1 {
 		return fmt.Errorf("instance ID required\nUsage: hypeman rm [flags] <instance> [instance...]\n       hypeman rm --all [--force]")
+	}
+
+	deleteParams := hypeman.InstanceDeleteParams{
+		GracefulShutdown: hypeman.Opt(cmd.Bool("graceful-shutdown")),
 	}
 
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)
@@ -107,6 +116,7 @@ func handleRm(ctx context.Context, cmd *cli.Command) error {
 		err = client.Instances.Delete(
 			ctx,
 			instanceID,
+			deleteParams,
 			opts...,
 		)
 		if err != nil {
