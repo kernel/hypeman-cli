@@ -42,9 +42,8 @@ func handleRm(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("instance ID required\nUsage: hypeman rm [flags] <instance> [instance...]\n       hypeman rm --all [--force]")
 	}
 
-	deleteParams := hypeman.InstanceDeleteParams{}
-	if cmd.IsSet("graceful-shutdown") {
-		deleteParams.GracefulShutdown = hypeman.Opt(cmd.Bool("graceful-shutdown"))
+	deleteParams := hypeman.InstanceDeleteParams{
+		GracefulShutdown: hypeman.Opt(cmd.Bool("graceful-shutdown")),
 	}
 
 	client := hypeman.NewClient(getDefaultRequestOptions(cmd)...)

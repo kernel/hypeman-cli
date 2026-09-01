@@ -57,7 +57,7 @@ func handleCapabilities(ctx context.Context, cmd *cli.Command) error {
 	format := cmd.Root().String("format")
 	transform := cmd.Root().String("transform")
 
-	if format == "auto" || format == "" {
+	if (format == "auto" || format == "") && transform == "" {
 		return showCapabilities(os.Stdout, res)
 	}
 
