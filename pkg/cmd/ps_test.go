@@ -34,6 +34,13 @@ func TestFormatGPU(t *testing.T) {
 			},
 			expected: "vgpu",
 		},
+		{
+			name: "vGPU without profile but with device path",
+			gpu: hypeman.InstanceGPU{
+				DevicePath: "/sys/bus/pci/devices/0000:41:00.4",
+			},
+			expected: "vgpu",
+		},
 	}
 
 	for _, tt := range tests {

@@ -81,6 +81,19 @@ func TestParseInstanceWaitState(t *testing.T) {
 	})
 }
 
+func TestParseInstanceLogsSource(t *testing.T) {
+	t.Run("accepts mixed-case source names", func(t *testing.T) {
+		source, err := parseInstanceLogsSource("SwTpM")
+		require.NoError(t, err)
+		assert.Equal(t, hypeman.InstanceLogsParamsSourceSwtpm, source)
+	})
+
+	t.Run("rejects unsupported source names", func(t *testing.T) {
+		_, err := parseInstanceLogsSource("kernel")
+		require.EqualError(t, err, "invalid source: kernel (must be app, vmm, hypeman, or swtpm)")
+	})
+}
+
 func TestParseAutoStandbyPorts(t *testing.T) {
 	t.Run("parses valid port values", func(t *testing.T) {
 		ports, err := parseAutoStandbyPorts([]string{"80", " 443 "}, "ignore-destination-port")
