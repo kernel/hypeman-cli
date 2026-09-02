@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
@@ -27,7 +28,7 @@ var logsCmd = cli.Command{
 		&cli.StringFlag{
 			Name:    "source",
 			Aliases: []string{"s"},
-			Usage:   "Log source: app (default), vmm (Cloud Hypervisor), or hypeman (operations log)",
+			Usage:   "Log source: app (default), vmm (Cloud Hypervisor), hypeman (operations log), or swtpm (software TPM emulator)",
 		},
 	},
 	Action:          handleLogs,
@@ -56,7 +57,11 @@ func handleLogs(ctx context.Context, cmd *cli.Command) error {
 		params.Tail = hypeman.Opt(int64(cmd.Int("tail")))
 	}
 	if cmd.IsSet("source") {
-		params.Source = hypeman.InstanceLogsParamsSource(cmd.String("source"))
+		source, err := parseInstanceLogsSource(cmd.String("source"))
+		if err != nil {
+			return err
+		}
+		params.Source = source
 	}
 
 	var opts []option.RequestOption
@@ -77,4 +82,19 @@ func handleLogs(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return stream.Err()
+}
+
+func parseInstanceLogsSource(raw string) (hypeman.InstanceLogsParamsSource, error) {
+	switch strings.ToLower(raw) {
+	case "app":
+		return hypeman.InstanceLogsParamsSourceApp, nil
+	case "vmm":
+		return hypeman.InstanceLogsParamsSourceVmm, nil
+	case "hypeman":
+		return hypeman.InstanceLogsParamsSourceHypeman, nil
+	case "swtpm":
+		return hypeman.InstanceLogsParamsSourceSwtpm, nil
+	default:
+		return "", fmt.Errorf("invalid source: %s (must be app, vmm, hypeman, or swtpm)", raw)
+	}
 }
