@@ -277,6 +277,11 @@ func printResourceRow(name string, res gjson.Result, unit string) {
 	if ratio == 1.0 {
 		ratioStr = "1.0x"
 	}
+	if name == "network" && res.Get("source").String() == "unknown" {
+		capStr = "unknown"
+		effStr, availStr = "unlimited", "unlimited"
+		ratioStr = "n/a"
+	}
 
 	fmt.Printf("%-10s %-14s %-14s %-14s %-14s %s\n", name, capStr, effStr, allocStr, availStr, ratioStr)
 }

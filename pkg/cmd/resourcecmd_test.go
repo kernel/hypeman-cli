@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"io"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestParseReclaimBytes(t *testing.T) {
@@ -33,6 +37,29 @@ func TestParseReclaimBytes(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestNetworkCapacityRow(t *testing.T) {
+	for _, source := range []string{"unknown", "configured", "detected"} {
+		t.Run(source, func(t *testing.T) {
+			stdout := os.Stdout
+			reader, writer, err := os.Pipe()
+			require.NoError(t, err)
+			defer reader.Close()
+			os.Stdout = writer
+			defer func() { os.Stdout = stdout }()
+			res := gjson.Parse(`{"source":"` + source + `","capacity":0,"effective_limit":0,"allocated":50000000,"available":0,"oversub_ratio":1000}`)
+			printResourceRow("network", res, "bps")
+			require.NoError(t, writer.Close())
+			output, err := io.ReadAll(reader)
+			require.NoError(t, err)
+			want := "network 0 bps 0 bps 400 Mbps 0 bps 1000.0x"
+			if source == "unknown" {
+				want = "network unknown unlimited 400 Mbps unlimited n/a"
+			}
+			assert.Equal(t, want, strings.Join(strings.Fields(string(output)), " "))
 		})
 	}
 }
