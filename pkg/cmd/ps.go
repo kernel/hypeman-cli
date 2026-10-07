@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -121,11 +122,29 @@ func formatGPU(gpu hypeman.InstanceGPU) string {
 	if gpu.Profile != "" {
 		return gpu.Profile
 	}
-	// Check if mdev UUID is set (indicates vGPU without profile name shown)
-	if gpu.MdevUuid != "" {
+	// A vGPU is attached without a profile name shown. mdev_uuid is only populated on
+	// mdev hosts; vendor VFIO hosts report device_path instead.
+	if gpu.MdevUuid != "" || instanceGPUDevicePath(gpu) != "" {
 		return "vgpu"
 	}
 	return "-"
+}
+
+// instanceGPUDevicePath returns the sysfs path of the assigned vGPU device,
+// which the API reports on vendor VFIO hosts. The generated SDK has no typed
+// field for it yet, so it arrives as an extra field.
+func instanceGPUDevicePath(gpu hypeman.InstanceGPU) string {
+	// Valid reports false for extra fields, so decode Raw instead; it is empty
+	// when the field is absent.
+	raw := gpu.JSON.ExtraFields["device_path"].Raw()
+	if raw == "" {
+		return ""
+	}
+	var devicePath string
+	if err := json.Unmarshal([]byte(raw), &devicePath); err != nil {
+		return ""
+	}
+	return devicePath
 }
 
 // formatHypervisor returns a short abbreviation for the hypervisor
