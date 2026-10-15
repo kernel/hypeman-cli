@@ -295,7 +295,6 @@ func runExecInteractive(ws *websocket.Conn) (int, error) {
 func runExecNonInteractive(ws *websocket.Conn) (int, error) {
 	errCh := make(chan error, 2)
 	exitCodeCh := make(chan int, 1)
-	doneCh := make(chan struct{})
 
 	// Forward stdin to WebSocket
 	go func() {
@@ -319,26 +318,20 @@ func runExecNonInteractive(ws *websocket.Conn) (int, error) {
 
 	// Forward WebSocket to stdout
 	go func() {
-		defer close(doneCh)
 		for {
 			msgType, message, err := ws.ReadMessage()
 			if err != nil {
-				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) ||
-					err == io.EOF {
-					exitCodeCh <- 0
-					return
-				}
-				errCh <- fmt.Errorf("websocket read error: %w", err)
+				errCh <- fmt.Errorf("websocket closed before receiving an exit code: %w", err)
 				return
 			}
 
 			// Check for exit code message
 			if msgType == websocket.TextMessage && bytes.Contains(message, []byte("exitCode")) {
 				var exitMsg struct {
-					ExitCode int `json:"exitCode"`
+					ExitCode *int `json:"exitCode"`
 				}
-				if json.Unmarshal(message, &exitMsg) == nil {
-					exitCodeCh <- exitMsg.ExitCode
+				if json.Unmarshal(message, &exitMsg) == nil && exitMsg.ExitCode != nil {
+					exitCodeCh <- *exitMsg.ExitCode
 					return
 				}
 			}
@@ -355,7 +348,5 @@ func runExecNonInteractive(ws *websocket.Conn) (int, error) {
 		return 255, err
 	case exitCode := <-exitCodeCh:
 		return exitCode, nil
-	case <-doneCh:
-		return 0, nil
 	}
 }
