@@ -1,6 +1,6 @@
 module github.com/kernel/hypeman-cli
 
-go 1.25.0
+go 1.27.2
 
 require (
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
