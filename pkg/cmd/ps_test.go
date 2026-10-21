@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/kernel/hypeman-go"
@@ -36,8 +35,10 @@ func TestFormatGPU(t *testing.T) {
 			expected: "vgpu",
 		},
 		{
-			name:     "vGPU without profile but with device path",
-			gpu:      instanceGPUFromJSON(t, `{"device_path":"/sys/bus/pci/devices/0000:41:00.4"}`),
+			name: "vGPU without profile but with device path",
+			gpu: hypeman.InstanceGPU{
+				DevicePath: "/sys/bus/pci/devices/0000:41:00.4",
+			},
 			expected: "vgpu",
 		},
 	}
@@ -49,17 +50,6 @@ func TestFormatGPU(t *testing.T) {
 		})
 	}
 }
-
-// instanceGPUFromJSON decodes an InstanceGPU the way the API delivers it, so
-// fields the SDK does not type yet land in JSON.ExtraFields.
-func instanceGPUFromJSON(t *testing.T, raw string) hypeman.InstanceGPU {
-	t.Helper()
-
-	var gpu hypeman.InstanceGPU
-	require.NoError(t, json.Unmarshal([]byte(raw), &gpu))
-	return gpu
-}
-
 func TestFormatHypervisor(t *testing.T) {
 	tests := []struct {
 		name       string
