@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/kernel/hypeman-go"
 	"github.com/kernel/hypeman-go/option"
@@ -57,6 +59,10 @@ Examples:
 		&cli.StringFlag{
 			Name:  "base-image-digest",
 			Usage: "Pinned base image digest for reproducible builds",
+		},
+		&cli.StringFlag{
+			Name:  "machine-base-image",
+			Usage: "Digest-pinned machine base image for a native macOS build",
 		},
 		&cli.StringFlag{
 			Name:    "builder",
@@ -162,53 +168,9 @@ func handleBuild(ctx context.Context, cmd *cli.Command) error {
 		opts = append(opts, debugMiddlewareOption)
 	}
 
-	// Build params
-	params := hypeman.BuildNewParams{
-		Source:         bytes.NewReader(tarball.Bytes()),
-		TimeoutSeconds: hypeman.Opt(int64(timeout)),
-	}
-
-	if dockerfileContent != "" {
-		params.Dockerfile = hypeman.Opt(dockerfileContent)
-	}
-
-	if v := cmd.String("base-image-digest"); v != "" {
-		params.BaseImageDigest = hypeman.Opt(v)
-	}
-	if v := cmd.String("builder"); v != "" {
-		params.BuilderID = hypeman.Opt(v)
-	}
-	if v := cmd.String("cache-scope"); v != "" {
-		params.CacheScope = hypeman.Opt(v)
-	}
-	if v := cmd.String("global-cache-key"); v != "" {
-		params.GlobalCacheKey = hypeman.Opt(v)
-	}
-	if v := cmd.String("is-admin-build"); v != "" {
-		params.IsAdminBuild = hypeman.Opt(v)
-	}
-	if v := cmd.String("secrets"); v != "" {
-		params.Secrets = hypeman.Opt(v)
-	}
-	if v := cmd.String("image-name"); v != "" {
-		params.ImageName = hypeman.Opt(v)
-	}
-	if cmd.IsSet("cpus") {
-		params.CPUs = hypeman.Opt(int64(cmd.Int("cpus")))
-	}
-	if cmd.IsSet("memory") {
-		params.MemoryMB = hypeman.Opt(int64(cmd.Int("memory")))
-	}
-	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
-	for _, malformed := range malformedTags {
-		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
-	}
-	if len(tags) > 0 {
-		tagsJSON, err := marshalStringMap(tags)
-		if err != nil {
-			return fmt.Errorf("failed to encode tags: %w", err)
-		}
-		params.Tags = hypeman.Opt(tagsJSON)
+	params, err := buildNewParams(cmd, tarball.Bytes(), dockerfileContent, timeout)
+	if err != nil {
+		return err
 	}
 
 	// Start build
@@ -225,6 +187,81 @@ func handleBuild(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("build failed: %w", err)
 	}
 
+	return nil
+}
+
+func buildNewParams(cmd *cli.Command, source []byte, dockerfile string, timeout int) (hypeman.BuildNewParams, error) {
+	params := hypeman.BuildNewParams{
+		Source:         bytes.NewReader(source),
+		TimeoutSeconds: hypeman.Opt(int64(timeout)),
+	}
+
+	machineBaseImage := cmd.String("machine-base-image")
+	if machineBaseImage != "" {
+		if err := validateMachineBaseImage(machineBaseImage); err != nil {
+			return params, err
+		}
+		for _, flag := range []string{"file", "base-image-digest", "builder", "cache-scope", "global-cache-key", "is-admin-build", "secrets", "image-name"} {
+			if cmd.IsSet(flag) {
+				return params, fmt.Errorf("--%s cannot be used with --machine-base-image", flag)
+			}
+		}
+		params.SetExtraFields(map[string]any{"machine_base_image": machineBaseImage})
+	} else {
+		if dockerfile != "" {
+			params.Dockerfile = hypeman.Opt(dockerfile)
+		}
+		if v := cmd.String("base-image-digest"); v != "" {
+			params.BaseImageDigest = hypeman.Opt(v)
+		}
+		if v := cmd.String("builder"); v != "" {
+			params.BuilderID = hypeman.Opt(v)
+		}
+		if v := cmd.String("cache-scope"); v != "" {
+			params.CacheScope = hypeman.Opt(v)
+		}
+		if v := cmd.String("global-cache-key"); v != "" {
+			params.GlobalCacheKey = hypeman.Opt(v)
+		}
+		if v := cmd.String("is-admin-build"); v != "" {
+			params.IsAdminBuild = hypeman.Opt(v)
+		}
+		if v := cmd.String("secrets"); v != "" {
+			params.Secrets = hypeman.Opt(v)
+		}
+		if v := cmd.String("image-name"); v != "" {
+			params.ImageName = hypeman.Opt(v)
+		}
+	}
+
+	if cmd.IsSet("cpus") {
+		params.CPUs = hypeman.Opt(int64(cmd.Int("cpus")))
+	}
+	if cmd.IsSet("memory") {
+		params.MemoryMB = hypeman.Opt(int64(cmd.Int("memory")))
+	}
+	tags, malformedTags := parseKeyValueSpecs(cmd.StringSlice("tag"))
+	for _, malformed := range malformedTags {
+		fmt.Fprintf(os.Stderr, "Warning: ignoring malformed tag: %s\n", malformed)
+	}
+	if len(tags) > 0 {
+		tagsJSON, err := marshalStringMap(tags)
+		if err != nil {
+			return params, fmt.Errorf("failed to encode tags: %w", err)
+		}
+		params.Tags = hypeman.Opt(tagsJSON)
+	}
+	return params, nil
+}
+
+func validateMachineBaseImage(image string) error {
+	_, digest, ok := strings.Cut(image, "@sha256:")
+	if !ok || len(digest) != 64 {
+		return fmt.Errorf("--machine-base-image must be pinned by a sha256 digest")
+	}
+	if _, err := hex.DecodeString(digest); err != nil {
+		return fmt.Errorf("--machine-base-image must be pinned by a sha256 digest")
+	}
 	return nil
 }
 
