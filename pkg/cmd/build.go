@@ -21,9 +21,9 @@ import (
 var buildCmd = cli.Command{
 	Name:      "build",
 	Aliases:   []string{"builds"},
-	Usage:     "Build an image from a Dockerfile",
+	Usage:     "Build an image from a Dockerfile or native macOS recipe",
 	ArgsUsage: "[path]",
-	Description: `Build an image from a Dockerfile and source context.
+	Description: `Build an image from a Dockerfile or native macOS recipe and source context.
 
 The path argument specifies the build context directory containing the
 source code and Dockerfile. If not specified, the current directory is used.
@@ -44,7 +44,11 @@ Examples:
   hypeman build -f Dockerfile.prod ./myapp
 
   # Build with custom timeout
-  hypeman build --timeout 1200 ./myapp`,
+  hypeman build --timeout 1200 ./myapp
+
+  # Build from hypeman-macos-build.json using an installed, digest-pinned base
+  hypeman build --machine-base-image registry.example/macos/base@sha256:<digest> ./macos`,
+
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:    "file",
@@ -255,8 +259,8 @@ func buildNewParams(cmd *cli.Command, source []byte, dockerfile string, timeout 
 }
 
 func validateMachineBaseImage(image string) error {
-	_, digest, ok := strings.Cut(image, "@sha256:")
-	if !ok || len(digest) != 64 {
+	repository, digest, ok := strings.Cut(image, "@sha256:")
+	if !ok || repository == "" || strings.ContainsAny(repository, "@ \t\r\n") || len(digest) != 64 || digest != strings.ToLower(digest) {
 		return fmt.Errorf("--machine-base-image must be pinned by a sha256 digest")
 	}
 	if _, err := hex.DecodeString(digest); err != nil {

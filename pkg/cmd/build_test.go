@@ -101,7 +101,12 @@ func TestMachineBuildRejectsLinuxOptions(t *testing.T) {
 }
 
 func TestMachineBuildRequiresDigestPinnedImage(t *testing.T) {
-	for _, image := range []string{"registry.example.com/macos/base:latest", "registry.example.com/macos/base@sha256:abc"} {
+	for _, image := range []string{
+		"registry.example.com/macos/base:latest", "registry.example.com/macos/base@sha256:abc",
+		"@sha256:" + strings.Repeat("a", 64),
+		"registry.example.com/macos/base@sha256:" + strings.Repeat("A", 64),
+		"registry.example.com/macos/base@extra@sha256:" + strings.Repeat("a", 64),
+	} {
 		_, err := parseBuildParams(t, "--machine-base-image", image)
 		require.ErrorContains(t, err, "must be pinned by a sha256 digest")
 	}
