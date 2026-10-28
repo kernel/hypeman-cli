@@ -39,6 +39,7 @@ func testBuildFlags() []cli.Flag {
 		&cli.IntFlag{Name: "timeout", Value: 600},
 		&cli.StringFlag{Name: "base-image-digest"},
 		&cli.StringFlag{Name: "machine-base-image"},
+		&cli.StringFlag{Name: "machine-network-mode"},
 		&cli.StringFlag{Name: "builder", Aliases: []string{"builder-id"}},
 		&cli.StringFlag{Name: "cache-scope"},
 		&cli.StringFlag{Name: "global-cache-key"},
@@ -81,6 +82,16 @@ func TestMachineBuildMultipartFields(t *testing.T) {
 	got := multipartFieldNames(t, params)
 	want := []string{"cpus", "machine_base_image", "memory_mb", "source", "tags", "timeout_seconds"}
 	require.Equal(t, want, got)
+}
+
+func TestMachineBuildNetworkSelection(t *testing.T) {
+	params, err := parseBuildParams(t, "--machine-base-image", testMachineBaseImage, "--machine-network-mode", "egress")
+	require.NoError(t, err)
+	require.Equal(t, []string{"machine_base_image", "machine_network_mode", "source", "timeout_seconds"}, multipartFieldNames(t, params))
+	_, err = parseBuildParams(t, "--machine-base-image", testMachineBaseImage, "--machine-network-mode", "bridge")
+	require.ErrorContains(t, err, "must be isolated or egress")
+	_, err = parseBuildParams(t, "--machine-network-mode", "egress")
+	require.ErrorContains(t, err, "requires --machine-base-image")
 }
 
 func TestMachineBuildRejectsLinuxOptions(t *testing.T) {

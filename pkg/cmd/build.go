@@ -69,6 +69,10 @@ Examples:
 			Usage: "Digest-pinned machine base image for a native macOS build",
 		},
 		&cli.StringFlag{
+			Name:  "machine-network-mode",
+			Usage: "Native macOS build networking: isolated (default) or unrestricted NAT egress",
+		},
+		&cli.StringFlag{
 			Name:    "builder",
 			Aliases: []string{"builder-id"},
 			Usage:   "Builder ID whose persistent cache disk backs this build (builds on the same builder are serialized)",
@@ -210,8 +214,19 @@ func buildNewParams(cmd *cli.Command, source []byte, dockerfile string, timeout 
 				return params, fmt.Errorf("--%s cannot be used with --machine-base-image", flag)
 			}
 		}
-		params.SetExtraFields(map[string]any{"machine_base_image": machineBaseImage})
+		extra := map[string]any{"machine_base_image": machineBaseImage}
+		if cmd.IsSet("machine-network-mode") {
+			mode := cmd.String("machine-network-mode")
+			if mode != "isolated" && mode != "egress" {
+				return params, fmt.Errorf("--machine-network-mode must be isolated or egress")
+			}
+			extra["machine_network_mode"] = mode
+		}
+		params.SetExtraFields(extra)
 	} else {
+		if cmd.IsSet("machine-network-mode") {
+			return params, fmt.Errorf("--machine-network-mode requires --machine-base-image")
+		}
 		if dockerfile != "" {
 			params.Dockerfile = hypeman.Opt(dockerfile)
 		}
