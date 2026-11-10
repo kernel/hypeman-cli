@@ -15,6 +15,7 @@ var statsCmd = cli.Command{
 	Name:            "stats",
 	Usage:           "Show live resource stats for an instance",
 	ArgsUsage:       "<instance>",
+	Description:     "For macOS guests, received network bytes are always 0 because NAT provides no per-instance interface.",
 	Action:          handleStats,
 	HideHelpCommand: true,
 }

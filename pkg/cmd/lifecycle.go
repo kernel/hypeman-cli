@@ -67,6 +67,7 @@ var restoreCmd = cli.Command{
 	Name:            "restore",
 	Usage:           "Restore an instance from standby",
 	ArgsUsage:       "<instance>",
+	Description:     "Standby restore is not supported for every guest type; the command returns an error when unavailable.",
 	Action:          handleRestore,
 	HideHelpCommand: true,
 }
