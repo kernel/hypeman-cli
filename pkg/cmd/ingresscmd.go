@@ -27,9 +27,10 @@ var ingressCmd = cli.Command{
 }
 
 var ingressCreateCmd = cli.Command{
-	Name:      "create",
-	Usage:     "Create an ingress for an instance",
-	ArgsUsage: "<instance>",
+	Name:        "create",
+	Usage:       "Create an ingress for an instance",
+	ArgsUsage:   "<instance>",
+	Description: "Ingress creation is unavailable when the server runs in macOS-only mode.",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:    "hostname",

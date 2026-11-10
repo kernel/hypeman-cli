@@ -121,8 +121,9 @@ func formatGPU(gpu hypeman.InstanceGPU) string {
 	if gpu.Profile != "" {
 		return gpu.Profile
 	}
-	// Check if mdev UUID is set (indicates vGPU without profile name shown)
-	if gpu.MdevUuid != "" {
+	// mdev hosts report a UUID, while SR-IOV hosts report the assigned
+	// device's sysfs path. Either indicates a vGPU without a profile name.
+	if gpu.MdevUuid != "" || gpu.DevicePath != "" {
 		return "vgpu"
 	}
 	return "-"

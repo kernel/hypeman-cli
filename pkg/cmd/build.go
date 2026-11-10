@@ -25,6 +25,7 @@ var buildCmd = cli.Command{
 
 The path argument specifies the build context directory containing the
 source code and Dockerfile. If not specified, the current directory is used.
+Builds are unavailable when the server runs in macOS-only mode.
 
 Subcommands are available for managing builds:
   hypeman build list       List builds

@@ -66,22 +66,20 @@ Examples:
 		},
 		&cli.StringFlag{
 			Name:  "platform",
-			Usage: `Target platform as os/arch[/variant] (e.g., "linux/amd64"). Defaults to the host platform`,
+			Usage: `Target platform as os/arch[/variant]. Linux supports amd64 and arm64; experimental darwin/arm64 requires an offline-imported macOS disk image and vz on Apple silicon. Omit to use the cached native image or host platform`,
 		},
 		&cli.StringFlag{
 			Name:  "memory",
-			Usage: `Base memory size (e.g., "1GB", "512MB")`,
-			Value: "1GB",
+			Usage: `Base memory size (e.g., "1GB", "512MB"). Linux defaults to 1GB. macOS defaults to the image memory; explicit values must be at least 4 GiB in whole MiB and within VZ host limits`,
 		},
 		&cli.IntFlag{
-			Name:  "cpus",
-			Usage: "Number of virtual CPUs",
-			Value: 2,
+			Name:        "cpus",
+			Usage:       "Number of virtual CPUs. Linux defaults to 2. macOS defaults to the image vCPU count; explicit values must be at least 2 and within VZ host limits",
+			HideDefault: true,
 		},
 		&cli.StringFlag{
 			Name:  "overlay-size",
-			Usage: `Writable overlay disk size (e.g., "10GB")`,
-			Value: "10GB",
+			Usage: `Writable overlay disk size (e.g., "10GB"). Linux defaults to 10GB. Omit for macOS guests, which clone the image's complete boot disk`,
 		},
 		&cli.StringFlag{
 			Name:  "hotplug-size",
@@ -254,17 +252,25 @@ func handleRun(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 
-	// Build instance params
+	// Build instance params. Leave server-defaulted fields unset unless the user
+	// supplied them so macOS guests can inherit image-specific CPU and memory
+	// settings and clone the complete image disk without a Linux overlay.
 	params := hypeman.InstanceNewParams{
 		Image:       image,
 		Name:        name,
-		Vcpus:       hypeman.Opt(int64(cmd.Int("cpus"))),
-		Size:        hypeman.Opt(cmd.String("memory")),
-		OverlaySize: hypeman.Opt(cmd.String("overlay-size")),
 		HotplugSize: hypeman.Opt(cmd.String("hotplug-size")),
 	}
 	if platform != "" {
 		params.Platform = hypeman.Opt(platform)
+	}
+	if cmd.IsSet("cpus") {
+		params.Vcpus = hypeman.Opt(int64(cmd.Int("cpus")))
+	}
+	if cmd.IsSet("memory") {
+		params.Size = hypeman.Opt(cmd.String("memory"))
+	}
+	if cmd.IsSet("overlay-size") {
+		params.OverlaySize = hypeman.Opt(cmd.String("overlay-size"))
 	}
 
 	if len(env) > 0 {
