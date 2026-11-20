@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"io"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestParseReclaimBytes(t *testing.T) {
@@ -35,6 +38,37 @@ func TestParseReclaimBytes(t *testing.T) {
 			assert.Equal(t, tt.expected, got)
 		})
 	}
+}
+
+func TestPrintGPUInfoShowsPlacementCapacity(t *testing.T) {
+	originalStdout := os.Stdout
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = writer
+	t.Cleanup(func() {
+		os.Stdout = originalStdout
+		_ = reader.Close()
+	})
+
+	printGPUInfo(gjson.Parse(`{
+		"mode":"vgpu",
+		"total_slots":64,
+		"used_slots":5,
+		"allocatable_slots":57,
+		"quarantined_slots":2,
+		"placement_disabled_reason":"VF health state unavailable",
+		"profiles":[{"name":"L40S-1Q","framebuffer_mb":1024,"available":57}]
+	}`))
+
+	require.NoError(t, writer.Close())
+	os.Stdout = originalStdout
+	output, err := io.ReadAll(reader)
+	require.NoError(t, err)
+
+	text := string(output)
+	assert.Contains(t, text, "5/64 slots used, 57 allocatable, 2 quarantined")
+	assert.Contains(t, text, "Placement disabled: VF health state unavailable")
+	assert.Contains(t, text, "Availability is per profile; counts are not additive.")
 }
 
 func TestFormatBytes(t *testing.T) {

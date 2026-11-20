@@ -21,7 +21,10 @@ var resourcesCmd = cli.Command{
 	Description: `Display current host resource capacity, allocation status, and per-instance breakdown.
 
 Resources include CPU, memory, disk, network, and GPU (if available).
-Oversubscription ratios are applied to calculate effective limits.
+Oversubscription ratios are applied to calculate effective limits. GPU profile
+availability is calculated per profile; counts across profiles are not additive.
+For vGPU hosts, allocatable slots exclude quarantined VFs, and used and
+quarantined counts can overlap while an affected instance still holds its VF.
 
 Examples:
   # Show all resources (default table format)
@@ -285,8 +288,31 @@ func printGPUInfo(gpu gjson.Result) {
 	mode := gpu.Get("mode").String()
 	totalSlots := gpu.Get("total_slots").Int()
 	usedSlots := gpu.Get("used_slots").Int()
+	allocatableSlots := gpu.Get("allocatable_slots").Int()
+	quarantinedSlots := gpu.Get("quarantined_slots").Int()
 
-	fmt.Printf("GPU: %s mode (%d/%d slots used)\n", mode, usedSlots, totalSlots)
+	if mode == "vgpu" {
+		fmt.Printf(
+			"GPU: %s mode (%d/%d slots used, %d allocatable, %d quarantined)\n",
+			mode,
+			usedSlots,
+			totalSlots,
+			allocatableSlots,
+			quarantinedSlots,
+		)
+	} else {
+		fmt.Printf(
+			"GPU: %s mode (%d/%d slots used, %d allocatable)\n",
+			mode,
+			usedSlots,
+			totalSlots,
+			allocatableSlots,
+		)
+	}
+
+	if reason := gpu.Get("placement_disabled_reason").String(); reason != "" {
+		fmt.Printf("Placement disabled: %s\n", reason)
+	}
 
 	if mode == "vgpu" {
 		profiles := gpu.Get("profiles")
@@ -301,6 +327,7 @@ func printGPUInfo(gpu gjson.Result) {
 				fmt.Printf("%-14s %-10s %d\n", name, vram, available)
 				return true
 			})
+			fmt.Println("Availability is per profile; counts are not additive.")
 		}
 	} else if mode == "passthrough" {
 		devices := gpu.Get("devices")

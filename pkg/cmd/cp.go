@@ -77,6 +77,9 @@ The path format is:
   - Local path: /path/to/file or ./relative/path
   - Instance path: <instance>:/path/in/instance
 
+Copying requires guest filesystem inspection, which is unavailable for some
+guest types.
+
 Examples:
   # Copy file to instance
   hypeman cp ./local-file.txt myinstance:/app/file.txt

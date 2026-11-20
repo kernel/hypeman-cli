@@ -10,9 +10,10 @@ import (
 )
 
 var logsCmd = cli.Command{
-	Name:      "logs",
-	Usage:     "Fetch the logs of an instance",
-	ArgsUsage: "<instance>",
+	Name:        "logs",
+	Usage:       "Fetch the logs of an instance",
+	ArgsUsage:   "<instance>",
+	Description: "Available log sources depend on the guest type; requesting an unsupported source returns an error.",
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
 			Name:    "follow",
@@ -27,7 +28,7 @@ var logsCmd = cli.Command{
 		&cli.StringFlag{
 			Name:    "source",
 			Aliases: []string{"s"},
-			Usage:   "Log source: app (default), vmm (Cloud Hypervisor), or hypeman (operations log)",
+			Usage:   "Log source: app (default), vmm (Cloud Hypervisor), hypeman (operations log), or swtpm",
 		},
 	},
 	Action:          handleLogs,
