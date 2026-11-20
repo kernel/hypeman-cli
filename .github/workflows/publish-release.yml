@@ -22,6 +22,7 @@ jobs:
         private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
         owner: kernel
         repositories: homebrew-tap
+        permission-contents: write
     - name: Checkout
       uses: actions/checkout@v4
       with:
