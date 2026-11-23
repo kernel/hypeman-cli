@@ -16,12 +16,13 @@ jobs:
     steps:
     - name: Generate app token
       id: app-token
-      uses: actions/create-github-app-token@v1
+      uses: actions/create-github-app-token@v3.3.0
       with:
         app-id: ${{ secrets.ADMIN_APP_ID }}
         private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
         owner: kernel
         repositories: homebrew-tap
+        permission-contents: write
     - name: Checkout
       uses: actions/checkout@v4
       with:
